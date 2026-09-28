@@ -3,7 +3,8 @@
 --
 -- 正式決定: clinic_master.clinics(clinic_id) への cross-schema FOREIGN KEY を張る
 -- (前リビジョンの「FKなし」方針から変更。docs/clinic-db-architecture.md STEP3参照)。
--- ON DELETE は RESTRICT で統一(CASCADE禁止)。001実行後(clinic_master.clinicsが存在する状態)に本ファイルを適用する。
+-- 原則 ON DELETE RESTRICT(CASCADE禁止)。ただし import_log_items.clinic_id のみ、監査履歴保持のため
+-- ON DELETE SET NULL とする。001実行後(clinic_master.clinicsが存在する状態)に本ファイルを適用する。
 --
 -- 注記: このファイル内の `id`(hp_research/hp_rank_feedback/maps_results)や `batch_id`(import_logs)は
 -- 「clinic_id」とは別概念の行サロゲートキーであり、Identity設計(UUIDv7/Python生成)の対象外。
