@@ -271,20 +271,20 @@ transaction/audit境界が破綻しないことを実証できた。
 
 ## 発見した実バグ(migration実行によってのみ発見できたもの)
 
-### PostgreSQL jsonbはNUL byte(` `)を拒否する
+### PostgreSQL jsonbはNUL byte(`\u0000`)を拒否する
 
 162,242件規模の初回本番相当実行で、`hp_research`のCOPY中に以下のエラーで失敗した:
 
 ```
 ERROR:  unsupported Unicode escape sequence
-DETAIL:    cannot be converted to text.
-CONTEXT:  JSON data, line 1: ..."url": "https://www.kandacli.com/開院 ...
+DETAIL:  \u0000 cannot be converted to text.
+CONTEXT:  JSON data, line 1: ..."url": "https://www.kandacli.com/開院\u0000...
 ```
 
 **原因**: legacyの`research_results.result_json`中のあるURL文字列に、スクレイピング由来と
 思われるNUL文字(`\x00`)が混入していた。Python標準の`json.loads`/`json.dumps`はこれを
-正当なJSON(` `エスケープ)として問題なく扱えるが、**PostgreSQLのjsonb入力関数は
-` `を明示的に拒否する**(内部のC文字列表現がNUL終端のため、NUL自体を格納できない
+正当なJSON(`\u0000`エスケープ)として問題なく扱えるが、**PostgreSQLのjsonb入力関数は
+`\u0000`を明示的に拒否する**(内部のC文字列表現がNUL終端のため、NUL自体を格納できない
 という根本的な制約)。dry-run(PR #8)のJSON妥当性検証はPythonの`json.loads`基準だったため、
 この問題を**検出できていなかった**(0 invalid JSONと報告していたが、それはPython視点で
 正しい)。
