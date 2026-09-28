@@ -43,10 +43,15 @@ class SourceBaseline:
 
 
 def file_stat(path: str) -> tuple[str, float, int]:
+    digest = hashlib.sha256()
     with open(path, "rb") as f:
-        sha256 = hashlib.sha256(f.read()).hexdigest()
+        # The Production SQLite is currently ~1.09 GB. Hash it incrementally
+        # so source verification does not defeat the migration runner's
+        # chunk-bounded memory guarantee.
+        while block := f.read(1024 * 1024):
+            digest.update(block)
     st = os.stat(path)
-    return sha256, st.st_mtime, st.st_size
+    return digest.hexdigest(), st.st_mtime, st.st_size
 
 
 def _ensure_wal_support_files(path: str) -> None:

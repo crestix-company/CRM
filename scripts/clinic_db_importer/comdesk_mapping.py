@@ -34,7 +34,10 @@ def evaluate_template_row(row: dict) -> ComdeskRowResult:
 
 
 def evaluate_original_row(row: dict, *, known_clinic_ids: set[int], known_template_ids: set[str]) -> ComdeskRowResult:
-    clinic_fk_ok = row["clinic_id"] is None or row["clinic_id"] in known_clinic_ids
+    # The target column is nullable so a separately reviewed unresolved source
+    # can be retained later, but unresolved rows are not eligible for automatic
+    # migration or export (clinic-db-review-resolution.md section 2.3).
+    clinic_fk_ok = row["clinic_id"] is not None and row["clinic_id"] in known_clinic_ids
     template_fk_ok = row["template_id"] in known_template_ids
 
     values, json_ok = transform.parse_json(row["row_json"])
