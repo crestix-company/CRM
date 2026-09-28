@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS clinic_ops.hp_research (
   id             uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,  -- row surrogate key、Identity設計の対象外
   clinic_id      uuid        NOT NULL,
   url            text        NULL,
-  fetch_status   text        NOT NULL,
+  fetch_status   text        NOT NULL,  -- SUCCESS/REVIEW/ERROR/NOT_FOUND。コード確定語彙(下記CHECK参照)
   fetched_at     timestamptz NULL,
   content_ref    text        NULL,
   error_detail   text        NULL,
@@ -34,7 +34,11 @@ CREATE TABLE IF NOT EXISTS clinic_ops.hp_research (
   CONSTRAINT fk_hp_research_clinic
     FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT,
   CONSTRAINT chk_hp_research_machine_rank
-    CHECK (machine_rank IS NULL OR machine_rank IN ('A', 'B', 'C', 'D'))
+    CHECK (machine_rank IS NULL OR machine_rank IN ('A', 'B', 'C', 'D')),
+  -- コード確定(docs/clinic-db-runtime-vocab-v1.md「HP fetch status」節、
+  -- src/enrichment/researcher.py Researcher.hp()の research_status 生成箇所を全網羅)。
+  CONSTRAINT chk_hp_research_fetch_status
+    CHECK (fetch_status IN ('SUCCESS', 'REVIEW', 'ERROR', 'NOT_FOUND'))
 );
 CREATE INDEX IF NOT EXISTS idx_hp_research_clinic_created
   ON clinic_ops.hp_research (clinic_id, created_at DESC);

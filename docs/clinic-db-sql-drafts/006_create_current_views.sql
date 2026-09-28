@@ -78,10 +78,12 @@ COMMENT ON VIEW clinic_ops.manual_overrides_current IS
   'Latest SET/CLEAR per (clinic_id, field). CLEAR resolves to NULL value. See docs/clinic-db-review-resolution.md 4';
 
 -- ============================================================
--- HP website: manual優先、なければ最新verified machine URL
+-- HP website: manual優先、なければ最新successful machine URL
 -- ============================================================
--- 要確認: fetch_status='VERIFIED' はreadonly-audit実測(clinics.hp_status分布)を参照した暫定値。
--- hp_research.fetch_statusの正式な許可語彙が確定次第、このWHERE条件を更新する。
+-- 修正済み(旧draftの誤り): fetch_status='VERIFIED' は誤りだった。'VERIFIED' は clinics.hp_status
+-- (current summary)側の値であり、hp_research.fetch_status(= research_status)には現れない。
+-- コード確定語彙(docs/clinic-db-runtime-vocab-v1.md「HP fetch status」節、
+-- src/enrichment/researcher.py Researcher.hp()の成功パス)により 'SUCCESS' が正しい。
 CREATE OR REPLACE VIEW clinic_ops.current_hp_website AS
 SELECT
   c.clinic_id,
@@ -94,7 +96,7 @@ LEFT JOIN LATERAL (
   SELECT hr.url
   FROM clinic_ops.hp_research hr
   WHERE hr.clinic_id = c.clinic_id
-    AND hr.fetch_status = 'VERIFIED'
+    AND hr.fetch_status = 'SUCCESS'
     AND hr.url IS NOT NULL
   ORDER BY hr.created_at DESC, hr.id DESC
   LIMIT 1

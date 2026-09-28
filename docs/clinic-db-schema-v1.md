@@ -5,7 +5,8 @@
 > 本文書は以下を統合した最終参照(single source of truth)である:
 > `docs/clinic-db-readonly-audit.md`(SQLite実測)、`docs/clinic-sqlite-to-postgres-mapping.md`(列単位mapping)、
 > `docs/clinic-db-consumer-contract.md`(現機能の契約)、`docs/clinic-db-review-resolution.md`(REVIEW解消)、
-> `docs/clinic-db-architecture.md` / `docs/clinic-db-migration-plan.md` / `docs/clinic-uuid-strategy.md`(先行設計)。
+> `docs/clinic-db-architecture.md` / `docs/clinic-db-migration-plan.md` / `docs/clinic-uuid-strategy.md`(先行設計)、
+> `docs/clinic-db-runtime-vocab-v1.md`(hot_status / fetch_status / job status・state / normalizerのコード確定語彙)。
 >
 > Clinic Lead repo (`/Users/maekawahiroyuki/Desktop/clinic-list-filter-complete`)・Production SQLite
 > (`~/CrestixData/clinic-lead/clinics.sqlite3`) は読み取り専用でのみ参照済み。DDL/DML/importは
@@ -103,7 +104,10 @@ CRM Prismaの`schema.prisma`は`multiSchema`を使わず`public`単一schemaし�
 `medical_type`, `designation_date`, `registration_reason`, `owner_equal`, `age_probability`,
 `departments`, `active`, `is_new`, `merged_into_clinic_id`, `merge_hold`, `exclude_reason`,
 `prefecture` を`clinic_master.clinics`へ反映済み。`recent_until`は生成カラムでderive。
-`hot_status`のみ未実装(3.7節「Remaining unknowns」参照)。
+`hot_status`はコード確定(`docs/clinic-db-runtime-vocab-v1.md`「hot_status」節、
+`src/scoring/research_scoring.py:93`)の結果、`marketing_signal_count`のみを入力とする
+**DERIVABLE**と判断し、専用列は追加しない(`hp_research.features`のsignal一覧から
+いつでも再計算可能なため)。
 
 ### 3.2 HP
 
@@ -112,7 +116,10 @@ CRM Prismaの`schema.prisma`は`multiSchema`を使わず`public`単一schemaし�
 - `current_hp_rank` VIEW(`004_current_hp_rank_view.sql`): 最新manual rank、なければ最新machine rank。
   同VIEWで`treatment_categories`/`confirmed_signals`もmachine featuresから投影。
 - `current_hp_website` VIEW(`006_create_current_views.sql`): manual `hp_url` SET優先、なければ
-  最新verified machine URL。
+  `fetch_status='SUCCESS'`の最新machine URL(コード確定語彙、旧draftの`'VERIFIED'`は誤りだったため
+  修正済み。`docs/clinic-db-runtime-vocab-v1.md`「HP fetch status」節参照)。
+- `hp_research.fetch_status`の許可値は`SUCCESS`/`REVIEW`/`ERROR`/`NOT_FOUND`の4値でCHECK確定済み
+  (`src/enrichment/researcher.py` `Researcher.hp()`を全網羅)。
 - machine再計算は`hp_research`へのINSERTのみで完結し、`hp_rank_feedback`/`manual_override_events`の
   過去行には一切触れないため、人間の訂正が構造的に消えない。
 
@@ -140,6 +147,14 @@ CRM Prismaの`schema.prisma`は`multiSchema`を使わず`public`単一schemaし�
 ### 3.6 Jobs
 
 `research_jobs` + `research_job_items`(runtime state、legacy in-flight行は移行しない)。
+`kind`/`status`/`state`はすべてコード確定語彙(`docs/clinic-db-runtime-vocab-v1.md`「Jobs」節、
+`src/master/jobs.py` + `src/master/store.py`を全網羅):
+
+- `research_jobs.kind`: `hp` / `epark` / `media`
+- `research_jobs.status`: `PAUSED`(default) / `RUNNING` / `COMPLETED` / `RESET` / `BUDGET`
+- `research_job_items.state`: `PENDING`(default) / `RUNNING` / `DONE`(成否は`result`列で表現、
+  `ERROR`/`SKIPPED`という状態は存在しない)
+
 Cutover gate:
 
 - `research_jobs.status = 'RUNNING'` の件数 = 0
@@ -147,7 +162,10 @@ Cutover gate:
 - app workerが停止し、research lockが解放されていること
 - 完了結果が`research_results`(legacy)へ反映済みであることを照合済み
 
-これらを全て満たしてから、新runtimeを空の状態で開始する。
+これらを全て満たしてから、新runtimeを空の状態で開始する。複数worker対応時のatomic claim
+(`SELECT ... FOR UPDATE SKIP LOCKED`)は、legacy実装のSQLite単一プロセス内lock方式
+(`threading.Lock` + `BEGIN IMMEDIATE`)をそのまま移植できないため、実装工程で新規設計する
+(`docs/clinic-db-runtime-vocab-v1.md`「Jobs」節参照)。
 
 ### 3.7 Import audit
 
@@ -231,7 +249,7 @@ not found、`docker`はインストール済みだがdaemon未起動)、実DB/�
 | FK target existence | 全FKの参照先table/column(`clinic_master.clinics.clinic_id`, `clinic_ops.import_logs.batch_id`, `clinic_ops.comdesk_templates.template_id`, `clinic_ops.research_jobs.id`)が定義順で存在することを確認 |
 | duplicate object | table名・VIEW名・index名・constraint名の重複なしを`grep`で確認 |
 | VIEW dependency | `current_hp_rank`は`hp_research`/`hp_rank_feedback`、`maps_current`は`maps_results`、`manual_overrides_current`は`manual_override_events`、`current_hp_website`は`manual_overrides_current`+`hp_research`、`current_official_website`は`current_hp_website`+`maps_current`に依存。全て6節の順序内で解決可能 |
-| CHECK consistency | `manual_override_events`のSET/CLEAR CHECKは相互排他。rank系CHECK(A/B/C/D)はhp_research/hp_rank_feedback間で値域一致。矛盾するCHECKなし |
+| CHECK consistency | `manual_override_events`のSET/CLEAR CHECKは相互排他。rank系CHECK(A/B/C/D)はhp_research/hp_rank_feedback間で値域一致。`fetch_status`/`research_jobs.status`/`research_job_items.state`/`research_jobs.kind`はすべて`docs/clinic-db-runtime-vocab-v1.md`のコード確定語彙と一致するよう更新済み。矛盾するCHECKなし |
 | index target | 追加index列はすべて対応tableの実列名と一致(`grep`で列定義と索引定義を突合) |
 | syntax sanity | 括弧・カンマの対応を目視確認。ただし実際のPostgresパーサによる検証ではない点に注意 |
 
@@ -239,14 +257,14 @@ not found、`docker`はインストール済みだがdaemon未起動)、実DB/�
 
 ## 8. Remaining unknowns
 
+前リビジョンの項目1(hot_status)・2(fetch_status)・3(job status/state)・6(normalizer)は
+`docs/clinic-db-runtime-vocab-v1.md`でClinic Lead repoのコードからREAD ONLYで解消済み。
+残るのは以下の2項目のみ(コードから確定できないため推測せず残す)。
+
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | `hot_status`のscoring algorithm/version | 未確定のため列・VIEWを追加していない。確定後に`current_hp_rank`拡張 |
-| 2 | `hp_research.fetch_status`の正式許可語彙 | `current_hp_website`のWHERE句は実測分布(`VERIFIED`等)からの暫定値。promotion前に確定要 |
-| 3 | `research_jobs.status` / `research_job_items.state`の正式語彙 | `jobs.py`実装の最終確認が必要。CHECK制約は暫定値 |
-| 4 | 実Supabase DB roleの構成 | 5.1節のロール名はplaceholder。実環境確認後にGRANT文を確定 |
-| 5 | `postal_code` / `clinic_name_kana`の実運用要否 | 実在件数が僅少(postal_code 21件、kana 0件)。将来入力経路の要否を業務側で判断 |
-| 6 | `name_norm`等のnormalizer実装移植 | アルゴリズム自体はClinic Lead既存コード(`filters.py`, `google_maps.py`)からの移植が必要。Schema v1はstorageのみ定義 |
+| 1 | 実Supabase DB roleの構成 | 5.1節のロール名はplaceholder。実環境確認後にGRANT文を確定 |
+| 2 | `postal_code` / `clinic_name_kana`の実運用要否 | 実在件数が僅少(postal_code 21件、kana 0件)。将来入力経路の要否を業務側で判断 |
 
 ---
 
