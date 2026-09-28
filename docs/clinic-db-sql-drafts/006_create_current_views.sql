@@ -34,7 +34,7 @@ LEFT JOIN LATERAL (
     FROM clinic_ops.maps_results m
     WHERE m.clinic_id = c.clinic_id
       AND m.maps_status = 'MAPS_MATCHED_WEBSITE'
-      AND m.maps_website_url IS NOT NULL
+      AND NULLIF(btrim(m.maps_website_url), '') IS NOT NULL
     ORDER BY m.created_at DESC, m.id DESC
     LIMIT 1
   )
