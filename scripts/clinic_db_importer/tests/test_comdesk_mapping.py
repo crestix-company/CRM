@@ -53,7 +53,7 @@ def test_original_row_unresolved_template_is_review():
     assert "MISSING_FK" in result.reasons
 
 
-def test_original_row_null_clinic_is_allowed():
+def test_original_row_null_clinic_is_review():
     row = {
         "clinic_id": None,
         "template_id": "tmpl-1",
@@ -63,4 +63,5 @@ def test_original_row_null_clinic_is_allowed():
         "row_number": 1,
     }
     result = evaluate_original_row(row, known_clinic_ids={1}, known_template_ids={"tmpl-1"})
-    assert result.decision == "INSERT"
+    assert result.decision == "REVIEW"
+    assert "MISSING_FK" in result.reasons
