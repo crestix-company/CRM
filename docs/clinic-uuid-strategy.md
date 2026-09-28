@@ -55,11 +55,18 @@ UUIDv4が紛れ込む余地が生まれる。これを構造的に防ぐため�
 
 ## 4. Python実装方針
 
-### 4.1 バージョン判定
+### 4.1 バージョン判定(確定)
+
+**実測確定(`docs/clinic-db-consumer-contract.md` 1節)**: Clinic Lead実アプリの `.venv/bin/python` は
+**Python 3.12.14**(`/Users/maekawahiroyuki/Desktop/clinic-list-filter-complete/.venv/bin/python`)。
+stdlib `uuid.uuid7()` は存在せず、`uuid6` パッケージも現時点で未導入。
 
 Python 3.14 で標準ライブラリ `uuid` モジュールに `uuid.uuid7()` が追加された(RFC 9562準拠のUUID
-バージョン6/7/8サポート)。**要確認: Clinic Lead側の実行環境が Python 3.14 以上かどうか**。
-3.14未満の環境が混在する可能性があるため、以下の優先順位で実装する。
+バージョン6/7/8サポート)ため、将来Python 3.14へ移行すればstdlib実装へ切り替えられるが、**現時点の
+確定方針は4.2節の `uuid6` dependency採用**である。実装工程で `requirements.txt` と
+`requirements-lock.txt` の両方へ明示追加し、lockを更新する(今回のセッションではpackage install・
+依存変更を一切実施していない)。以下の優先順位ロジックは、将来Python 3.14へ移行した場合に
+呼び出し側コードを変更せずに済むようにするための構成である。
 
 ```python
 import sys

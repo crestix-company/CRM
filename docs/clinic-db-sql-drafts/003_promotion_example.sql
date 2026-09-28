@@ -19,11 +19,16 @@ WHERE c.medical_key IS NULL                      -- 新規のみ(既存はSKIP)
 
 -- (b) [9] promotion: Pythonが (a) の各行に対して clinic_id = uuidv7() を生成した上でINSERT。
 -- 実運用は execute_values 等でバッチ化する。DB側は値を受け取るだけで一切生成しない。
+-- 列は簡略化のため一部のみ例示。Schema v1確定の全列(medical_type/designation_date/owner_equal/
+-- active/is_new/merge_hold/exclude_reason/source_payload等)は docs/clinic-db-schema-v1.md 2.4節、
+-- 実装時のINSERT対象列は docs/clinic-db-sql-drafts/001_create_clinic_master.sql を正とする。
+-- `website`列は存在しない(clinic_master.clinicsへ単一websiteを持たせない設計。
+-- docs/clinic-db-review-resolution.md 1.3節)。
 INSERT INTO clinic_master.clinics
-  (clinic_id, medical_key, legacy_uuid, clinic_name, prefecture, address, phone, website,
+  (clinic_id, medical_key, legacy_uuid, clinic_name, prefecture, address, phone,
    source, imported_batch_id, created_at, updated_at)
 VALUES
-  (:clinic_id, :medical_key, :legacy_uuid, :clinic_name, :prefecture, :address, :phone, :website,
+  (:clinic_id, :medical_key, :legacy_uuid, :clinic_name, :prefecture, :address, :phone,
    'legacy_sqlite', :batch_id, now(), now());
 
 -- (c) 行単位監査ログ(SKIP/INSERT/REVIEWそれぞれについてPythonが1行ずつ記録する)
