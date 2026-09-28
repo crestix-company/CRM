@@ -55,7 +55,7 @@ stdlib `uuid.uuid7()`は存在せず、`uuid6`も未導入。依存管理は`req
 | `first_seen_at` / `last_seen_at` | management export/get | `store.py:188` | 初回/最終観測 | SHOULD_MIGRATE | `first_seen_at`, `last_seen_at` | DB row作成/更新日時とは意味が異なる |
 | `uuid` | search, ordering, Comdesk identity/export | `filters.py:62,70`, `jobs.py:34`, `fixed_export.py:14,58` | legacy identity | MUST_MIGRATE | `legacy_uuid uuid UNIQUE NULL` | 非空21件valid/unique |
 | `phone_norm`, `name_norm`, `address_norm`, `name_prefix`, `tel_match_key` | matching/search | `filters.py:70`, `google_maps.py:69-88` | fuzzy/exact matching | DERIVABLE | application normalizationまたはgenerated/search columns | raw name/phone/addressから再生成可能。algorithm version固定必須 |
-| `hp_url`と`maps_website_url`のmaster `website`優先値 | UI/export/research | `fixed_export.py:60`, `researcher.py:80` | canonical website選択 | REVIEW | source別URLを保持し、current website VIEWで優先解決 | 現コードは用途別に優先順が異なり、1列へ不可逆統合できない |
+| `hp_url`と`maps_website_url`のmaster `website`優先値 | UI/export/research | `fixed_export.py:60`, `researcher.py:80` | canonical website選択 | DERIVABLE | source別URLを保持し、consumer別VIEWで優先解決 | 解決済み。単一列へ不可逆統合しない。詳細はreview-resolution参照 |
 
 都道府県filterは既存`prefecture`、HP Rank/statusは`hp_rank`/`hp_status`、医科/歯科は`medical_type`に
 直接依存する。既存mappingでmaster/HP対象としていた前者に加え、`medical_type`をtargetへ追加する必要がある。
@@ -78,7 +78,7 @@ stdlib `uuid.uuid7()`は存在せず、`uuid6`も未導入。依存管理は`req
 | `research_jobs.*` | job UI, pause/resume/budget | `jobs.py:29-99`, `app_v2.py:503-526,724-753` | durable research job | RUNTIME_ONLY | PostgreSQL runtime job table | legacy job移行は不要。cutover時に停止/完了を確認 |
 | `research_job_items.job_id/clinic_id/state/result/note` | worker and progress UI | `jobs.py:42-203` | queue、result、retry | RUNTIME_ONLY | PostgreSQL job item table | 新runtimeには必須、legacy in-flightは移さない |
 | `research_job_items.lease_until` | schema/merge only | `store.py:92-95`, `reintegration.py:65-74` | 旧lease予約 | LEGACY_ONLY | omit unless worker reintroduces leases | current workerのclaimでreadされていない |
-| Comdesk `templates` / `comdesk_original_rows` | fixed export | `fixed_export.py:87-119` | 元28列を原文保持して再出力 | REVIEW | 専用PostgreSQL tablesまたはSQLite併用境界 | 4 target tableの範囲外だが全面切替には必須 |
+| Comdesk `templates` / `comdesk_original_rows` | fixed export | `fixed_export.py:87-119` | 元28列を原文保持して再出力 | MUST_MIGRATE | `clinic_ops.comdesk_templates` / `comdesk_original_rows` | 解決済み。元値優先と空URL時だけMaps補完を維持 |
 
 ## 5. Functional contract
 
@@ -98,9 +98,9 @@ stdlib `uuid.uuid7()`は存在せず、`uuid6`も未導入。依存管理は`req
 | 再調査 | current clinic filters、research result、Maps confirmed website、job runtime tables |
 | pause/resume | research job/job item runtime state |
 
-Comdesk exportを完全維持するには、今回の4 target tableだけでなく`comdesk_original_rows`と`templates`の
-consumer契約も別途設計が必要。これらを移さずPostgreSQLへ全面切替すると、既存元行を保持する28列exportを
-再現できないため、schema finalize前の明示的な追加課題とする。
+Comdesk exportを完全維持するため、`clinic_ops.comdesk_original_rows`と`comdesk_templates`をSchema v1
+target候補に含める。元行を空欄も含めて優先し、元URLが空欄の場合だけprotected Maps URLを補完する。
+詳細は`docs/clinic-db-review-resolution.md`を参照。
 
 ## 6. Constraint candidates
 
@@ -134,7 +134,8 @@ cast成功・重複0を再確認してから適用する。
 
 HP machine typed columnsは概ね足りるが、named treatment/signals/current projection契約、page evidenceの
 保存先、hp_rank以外のgeneric manual overrideを設計する必要がある。`hp_rank_feedback`だけでは
-manual URL/status/treatment/signalsを保持できない。
+manual URL/status/treatment/signalsを保持できないため、append-only `manual_override_events`とcurrent VIEWを
+追加する。詳細はreview-resolution参照。
 
 ### `clinic_ops.maps_results`
 
@@ -142,6 +143,11 @@ manual URL/status/treatment/signalsを保持できない。
 `source_batch_id`, `source_row_number`。また「最新raw」ではなく、confirmed websiteを低品質な後続結果から
 保護する現ロジックを維持したcurrent Maps VIEW/projectionが必要。legacy sourceに存在しない
 `place_id/latitude/longitude/rating/review_count`はNULLのままにする。
+
+## 7.1 Review resolution
+
+Website priority、Comdesk target、Maps protected current、generic manual override、runtime jobsの主要REVIEWは
+`docs/clinic-db-review-resolution.md`で解消済み。残る作業はSchema v1 DDLでの具体化であり、ownership判断は0件。
 
 ## 8. Safety result
 

@@ -26,7 +26,7 @@ Migration actionは`COPY`, `TRANSFORM`, `DERIVE`, `REVIEW`, `DO_NOT_MIGRATE`の�
 | `clinics.address_norm` | TEXT | clinic_master | generated/search projection | address_norm | text | raw addressから現normalizerで再生成 | no | DERIVE | Maps matching consumer |
 | `clinics.prefecture` | TEXT | clinic_master | clinics | prefecture | text | `'' -> NULL`; 表記検証 | yes | TRANSFORM | JISコード化は未決定 |
 | `base_json.postal_code` | JSON text | clinic_master | clinics | postal_code | text | JSON extract; `'' -> NULL` | yes | TRANSFORM | 実在21件のみ |
-| `clinics.hp_url` | TEXT | clinic_master | clinics | website | text | VERIFIEDかつ非空を候補化 | yes | REVIEW | Maps websiteとの優先規則をpromotion前に確定 |
+| `clinics.hp_url` | TEXT | clinic_ops | current HP projection | current_hp_website | text | manual SET→verified machine HPの順で解決 | yes | DERIVE | 単一master websiteへ統合しない。consumer別priorityはreview-resolution参照 |
 | `clinics.active` | INTEGER | clinic_master | clinics | active (proposed) | boolean | 0/1→boolean | no | TRANSFORM | MUST_MIGRATE: default filter/job/metrics |
 | `clinics.first_seen_at` | TEXT | clinic_master | clinics | first_seen_at (proposed) | timestamptz | timestamp parse | no | TRANSFORM | SHOULD_MIGRATE: DB created_atとは意味が異なる |
 | `clinics.last_seen_at` | TEXT | clinic_master | clinics | last_seen_at (proposed) | timestamptz | timestamp parse | no | TRANSFORM | SHOULD_MIGRATE: DB updated_atとは意味が異なる |
@@ -83,12 +83,12 @@ Migration actionは`COPY`, `TRANSFORM`, `DERIVE`, `REVIEW`, `DO_NOT_MIGRATE`の�
 
 | SQLite column | SQLite type | Postgres schema | Postgres table | Postgres column | Postgres type | transform | nullable | migration action | notes |
 |---|---|---|---|---|---|---|---|---|---|
-| `manual_overrides.clinic_id` | INTEGER | clinic_ops | hp_rank_feedback | clinic_id | uuid | SQLite id→new UUIDv7 lookup | no | REVIEW | source tableは現在0 rows |
-| `manual_overrides.field` | TEXT | clinic_ops | hp_rank_feedback | manual_rank | text | `field='hp_rank'`だけを候補化 | no | REVIEW | 実データ0件で語彙未検証 |
-| `manual_overrides.value_json` when `field='hp_rank'` | TEXT/JSON | clinic_ops | hp_rank_feedback | manual_rank | text | A/B/C/Dのみextract | no | REVIEW | 実データ0件。field/value形式を実例で検証不能 |
-| `manual_overrides.source` | TEXT | clinic_ops | hp_rank_feedback | reviewer | text | reviewer identity mapping | no | REVIEW | sourceと人間identityが同義か未確認 |
-| `manual_overrides.note` | TEXT | clinic_ops | hp_rank_feedback | reason | text | empty→NULL | yes | REVIEW | 実データ0件 |
-| `manual_overrides.updated_at` | TEXT | clinic_ops | hp_rank_feedback | reviewed_at / created_at | timestamptz | timestamp parse | no | REVIEW | 実データ0件 |
+| `manual_overrides.clinic_id` | INTEGER | clinic_ops | manual_override_events | clinic_id | uuid | SQLite id→new UUIDv7 lookup | no | TRANSFORM | generic override target確定。source tableは現在0 rows |
+| `manual_overrides.field` | TEXT | clinic_ops | manual_override_events | field | text | allowed field語彙を検証 | no | COPY | rank以外のURL/status/treatment/signalsも保持 |
+| `manual_overrides.value_json` | TEXT/JSON | clinic_ops | manual_override_events | value | jsonb | valid JSON→jsonb; legacy rowはSET | yes | TRANSFORM | CLEARは将来eventとしてvalue NULL |
+| `manual_overrides.source` | TEXT | clinic_ops | manual_override_events | source / reviewer | text | sourceを保持; reviewer未分離なら同値seed | no | TRANSFORM | 実装後はreviewerを明示入力 |
+| `manual_overrides.note` | TEXT | clinic_ops | manual_override_events | reason | text | empty→NULL | yes | TRANSFORM | audit reason |
+| `manual_overrides.updated_at` | TEXT | clinic_ops | manual_override_events | reviewed_at / created_at | timestamptz | timestamp parse | no | TRANSFORM | deterministic current ordering |
 | latest machine snapshot | derived | clinic_ops | hp_rank_feedback | machine_*_at_review / features_snapshot | mixed | review時点machine行から取得 | yes | DERIVE | legacy sourceに確定スナップショットなし |
 
 現在0 rowsなので`hp_rank_feedback`へ自動INSERTするlegacy human historyはない。`clinics.hp_rank`を
@@ -131,3 +131,20 @@ manual rankと推測してはならない。
 5. Mapsに存在しないplace/rating/coordinatesを生成しない。
 6. `google_maps_results`履歴と`clinics`集約列を二重投入しない。
 7. import apply前には別途dry-runを必須とする。今回はapplyしない。
+
+## 6. Comdesk export contract
+
+| SQLite column | SQLite type | Postgres schema | Postgres table | Postgres column | Postgres type | transform | nullable | migration action | notes |
+|---|---|---|---|---|---|---|---|---|---|
+| `templates.id` | TEXT | clinic_ops | comdesk_templates | template_id | text | identity | no | COPY | template hash identity |
+| `templates.headers_json` | TEXT/JSON | clinic_ops | comdesk_templates | headers | jsonb | ordered array; 28要素検証 | no | TRANSFORM | 実データ1/1 valid |
+| `templates.mapping_json` | TEXT/JSON | clinic_ops | comdesk_templates | field_mapping | jsonb | objectとしてcast | no | TRANSFORM | 実データ1/1 valid、10 mapping keys |
+| `templates.created_at` | TEXT | clinic_ops | comdesk_templates | created_at | timestamptz | timestamp parse | no | TRANSFORM | audit timestamp |
+| `comdesk_original_rows.id` | INTEGER | — | — | — | — | source row surrogateとしてのみ使用 | — | DO_NOT_MIGRATE | targetは新規row UUID |
+| `comdesk_original_rows.clinic_id` | INTEGER | clinic_ops | comdesk_original_rows | clinic_id | uuid | SQLite id→new UUIDv7 lookup | yes | TRANSFORM | 21/21 linked、orphan 0 |
+| `comdesk_original_rows.template_id` | TEXT | clinic_ops | comdesk_original_rows | template_id | text | identity | no | COPY | template FK |
+| `comdesk_original_rows.row_json` | TEXT/JSON | clinic_ops | comdesk_original_rows | original_values | jsonb | ordered array; 28要素検証 | no | TRANSFORM | 元値は空欄も含め上書き保護 |
+| `comdesk_original_rows.uuid` | TEXT | clinic_ops | comdesk_original_rows | legacy_uuid | uuid | canonical UUID cast | yes | TRANSFORM | source snapshot |
+| `comdesk_original_rows.source_hash` | TEXT | clinic_ops | comdesk_original_rows | source_hash | text | identity | no | COPY | row provenance/unique key |
+| `comdesk_original_rows.row_number` | INTEGER | clinic_ops | comdesk_original_rows | source_row_number | int | identity | no | COPY | `UNIQUE(source_hash,source_row_number)` |
+| `comdesk_original_rows.created_at` | TEXT | clinic_ops | comdesk_original_rows | created_at | timestamptz | timestamp parse | no | TRANSFORM | import timestamp |
