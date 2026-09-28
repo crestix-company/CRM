@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from scripts.clinic_db_importer.jobs_report import read_job_cutover_status
 from scripts.clinic_db_importer.production_runner import (
     PRODUCTION_SUPABASE_PROJECT_REF,
     ProductionGuardError,
@@ -67,7 +68,7 @@ def test_assert_local_host_refuses_other_hosts():
 
 # --- Cutover gate -------------------------------------------------------
 
-def _job_items_db(pending=0, running=0, running_jobs=0):
+def _job_items_db(pending=0, running=0, running_jobs=0, cancelled=0):
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE research_job_items(state TEXT)")
     conn.execute("CREATE TABLE research_jobs(status TEXT)")
@@ -77,6 +78,8 @@ def _job_items_db(pending=0, running=0, running_jobs=0):
         conn.execute("INSERT INTO research_job_items VALUES ('RUNNING')")
     for _ in range(running_jobs):
         conn.execute("INSERT INTO research_jobs VALUES ('RUNNING')")
+    for _ in range(cancelled):
+        conn.execute("INSERT INTO research_job_items VALUES ('CANCELLED')")
     conn.execute("INSERT INTO research_job_items VALUES ('DONE')")  # noise row
     conn.commit()
     return conn
@@ -85,6 +88,12 @@ def _job_items_db(pending=0, running=0, running_jobs=0):
 def test_cutover_gate_passes_when_clear():
     gate = check_cutover_gate(_job_items_db())
     assert gate.passed is True
+
+
+def test_cutover_gate_cancelled_is_terminal_and_does_not_block():
+    gate = check_cutover_gate(_job_items_db(cancelled=103))
+    assert gate.passed is True
+    assert gate.pending_items == gate.running_items == gate.running_jobs == 0
 
 
 def test_cutover_gate_blocks_on_pending():
@@ -97,6 +106,23 @@ def test_cutover_gate_blocks_on_running():
     gate = check_cutover_gate(_job_items_db(running=1))
     assert gate.passed is False
     assert gate.running_items == 1
+
+
+def test_cutover_gate_blocks_on_running_job():
+    gate = check_cutover_gate(_job_items_db(running_jobs=1))
+    assert gate.passed is False
+    assert gate.running_jobs == 1
+
+
+def test_jobs_report_recognizes_cancelled_and_full_gate_contract():
+    conn = _job_items_db(cancelled=103)
+    status = read_job_cutover_status(conn)
+    assert status.cancelled_items == 103
+    assert status.other_item_states == {}
+    assert status.gate_clear is True
+
+    blocked = read_job_cutover_status(_job_items_db(pending=1))
+    assert blocked.gate_clear is False
 
 
 # --- Production guard ----------------------------------------------------

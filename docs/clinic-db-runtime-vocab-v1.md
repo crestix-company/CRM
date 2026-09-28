@@ -115,11 +115,12 @@ CONSTRAINT chk_research_jobs_kind
 
 **producer/schema default**: `src/master/store.py:94` — `state TEXT NOT NULL DEFAULT 'PENDING'`
 
-**allowed values(コード確定)**: `PENDING`(default), `RUNNING`, `DONE`
+**allowed values(コード確定)**: `PENDING`(default), `RUNNING`, `DONE`, `CANCELLED`
 (**`ERROR`/`SKIPPED`という状態は存在しない**。成否は`state='DONE'`のときの`result`列の値
 (`research_status`と同じ語彙: `SUCCESS`/`REVIEW`/`ERROR`/`NOT_FOUND`、kindがepark/mediaの場合は
 それぞれのvalues)で表現される。Schema v1の前回draftで仮置きしていた
-`CHECK (state IN ('PENDING','RUNNING','DONE','ERROR','SKIPPED'))`は誤りであり、本文書で訂正する)
+`CHECK (state IN ('PENDING','RUNNING','DONE','CANCELLED','ERROR','SKIPPED'))`のように
+`ERROR`/`SKIPPED`をstateへ混ぜるのは誤りであり、本文書で訂正する)
 
 **producer箇所**:
 - `PENDING`: schema default(`store.py:94`)、`create_job()`での一括INSERT(`jobs.py:38`)、
@@ -129,6 +130,9 @@ CONSTRAINT chk_research_jobs_kind
   (`jobs.py:142`、`WHERE ... AND state='PENDING'`のUPDATE + `rowcount`で排他確認)
 - `DONE`: `_research_one()`の最後(`jobs.py:202`)。成功・例外いずれの経路でも最終的に`DONE`になり、
   結果の詳細は`result`列(text)に記録される
+- `CANCELLED`: 未処理のまま意図的に終了したterminal state。`reset_job()`が同一transaction内で
+  `PENDING -> CANCELLED`とし、削除せずhistorical cancellation auditを保持する。workerのclaim条件は
+  `state='PENDING'`のため再claim対象外。`DONE`（調査処理完了）とは区別する
 
 ### State transitions
 
@@ -140,6 +144,7 @@ CONSTRAINT chk_research_jobs_kind
 | `RUNNING`(job、クラッシュ後残存) | `PAUSED`(job) | 新しい`_run_locked`開始時のrecovery(`jobs.py:98`) |
 | `RUNNING`(item、クラッシュ後残存) | `PENDING`(item) | 新しい`_run_locked`開始時のrecovery(`jobs.py:97`) |
 | `PENDING`(item) | `RUNNING`(item) | workerがclaim(単一/複数レーン、`jobs.py:116,142`) |
+| `PENDING`(item) | `CANCELLED`(item) | `reset_job()`または明示的historical repair。未処理の意図的終了 |
 | `RUNNING`(item) | `DONE`(item) | `_research_one()`が正常/例外いずれかで完了(`jobs.py:202`) |
 | `RUNNING`(item) | `PENDING`(item) | `_research_one()`内で`BudgetReached`/`Stopped`発生(`jobs.py:187`、そのitemは未完了のまま保持) |
 | `RUNNING`(job) | `COMPLETED`(job) | 全item完了(PENDING/RUNNINGが0件、`jobs.py:113,126`) |
@@ -147,6 +152,10 @@ CONSTRAINT chk_research_jobs_kind
 | `RUNNING`(job) | `PAUSED`(job) | `_research_one()`中に`Stopped`(`jobs.py:188`)、または`pause_job()`明示呼び出し(`jobs.py:61`、`COMPLETED`以外いつでも可) |
 | `COMPLETED`以外 | `RESET`(job) | `reset_job()`明示呼び出し。`RUNNING`中は不可(ValueError、`jobs.py:72`) |
 | `COMPLETED` | (変化なし) | `_run_locked`は`status=='COMPLETED'`なら即return(`jobs.py:94`、終了済みjobは再開しない) |
+| `CANCELLED`(item) | (変化なし) | terminal。worker claim対象外 |
+
+Cutover gateは`PENDING=0 AND RUNNING items=0 AND RUNNING jobs=0`。`CANCELLED`はterminalなので
+`PENDING`/`RUNNING`として数えず、gateをblockしない。
 
 **claim方式(現行実装)**: 単一プロセス内の複数スレッド(`ThreadPoolExecutor`、`PARALLEL_WORKERS=2`)が
 `_WRITE_LOCK`(Pythonの`threading.Lock`)とSQLiteの`BEGIN IMMEDIATE`トランザクションを組み合わせて、

@@ -127,11 +127,32 @@ CREATE TABLE IF NOT EXISTS clinic_ops.research_job_items (
     FOREIGN KEY (job_id) REFERENCES clinic_ops.research_jobs (id) ON DELETE RESTRICT,
   CONSTRAINT fk_research_job_items_clinic
     FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT,
-  -- state は PENDING/RUNNING/DONE の3値のみ(ERROR/SKIPPEDという状態は存在しない。
-  -- 成否はDONE時のresult列で表現される。docs/clinic-db-runtime-vocab-v1.md参照)。
+  -- state は PENDING/RUNNING/DONE/CANCELLED の4値のみ(ERROR/SKIPPEDという状態は存在しない。
+  -- DONEは処理完了、CANCELLEDは未処理の意図的終了を表す。docs/clinic-db-runtime-vocab-v1.md参照)。
   CONSTRAINT chk_research_job_items_state
-    CHECK (state IN ('PENDING', 'RUNNING', 'DONE'))
+    CHECK (state IN ('PENDING', 'RUNNING', 'DONE', 'CANCELLED'))
 );
+
+-- Schema v1 draftを旧3-state版のScratchへ再適用した場合も、constraintを安全に更新する。
+-- 既にCANCELLEDを許可している場合はno-op。
+DO $$
+DECLARE
+  state_constraint text;
+BEGIN
+  SELECT pg_get_constraintdef(oid)
+    INTO state_constraint
+    FROM pg_constraint
+   WHERE conrelid = 'clinic_ops.research_job_items'::regclass
+     AND conname = 'chk_research_job_items_state';
+  IF state_constraint IS NULL OR position('CANCELLED' IN state_constraint) = 0 THEN
+    ALTER TABLE clinic_ops.research_job_items
+      DROP CONSTRAINT IF EXISTS chk_research_job_items_state;
+    ALTER TABLE clinic_ops.research_job_items
+      ADD CONSTRAINT chk_research_job_items_state
+      CHECK (state IN ('PENDING', 'RUNNING', 'DONE', 'CANCELLED'));
+  END IF;
+END
+$$;
 CREATE INDEX IF NOT EXISTS idx_research_job_items_job_state
   ON clinic_ops.research_job_items (job_id, state);
 CREATE INDEX IF NOT EXISTS idx_research_job_items_clinic

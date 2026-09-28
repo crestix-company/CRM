@@ -79,7 +79,8 @@
 | fetch_status | SUCCESS/REVIEW/ERROR/NOT_FOUND → PASS / `VERIFIED`/`UNRESEARCHED` → FAIL | **全件期待通り** |
 | manual_override_events | SET+non-null → PASS / CLEAR+NULL → PASS / SET+NULL → FAIL / CLEAR+non-null → FAIL / 未許可field → FAIL | **全件期待通り** |
 | Jobs(research_jobs.status) | PAUSED/RUNNING/COMPLETED/RESET/BUDGET → PASS / 架空値(`PENDING`) → FAIL | **全件期待通り** |
-| Jobs(research_job_items.state) | PENDING/RUNNING/DONE → PASS / `ERROR`/`SKIPPED` → FAIL | **全件期待通り** |
+| Jobs(research_job_items.state) | PENDING/RUNNING/DONE/CANCELLED → PASS / `ERROR`/`SKIPPED` → FAIL | **全件期待通り** |
+| CANCELLED contract upgrade | 旧3-state CHECKへ005を再適用後、CANCELLED insert | **PASS** |
 | Comdesk(headers/original_values) | 28要素 → PASS / 27要素 → FAIL / 29要素 → FAIL | **全件期待通り** |
 | Comdesk重複 | `(source_hash, source_row_number)` 重複 → FAIL | **期待通り** |
 

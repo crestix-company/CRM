@@ -286,6 +286,23 @@ def test_cutover_gate_pending_blocks_only_production_mode(scratch_container, tmp
         )
 
 
+def test_cancelled_fixture_migrates_and_repeated_resume_is_noop(scratch_container, tmp_path):
+    container, db = scratch_container
+    sqlite_path = _fixture_sqlite(tmp_path, n_clinics=2, with_job_items=["CANCELLED"])
+
+    first = run_migration(sqlite_path=sqlite_path, container=container, db=db, chunk_size=1)
+    assert first["cutover_gate"].passed is True
+    assert first["cutover_gate"].pending_items == 0
+    assert first["cutover_gate"].running_items == 0
+    assert _psql_rows(container, db, "SELECT count(*) FROM clinic_ops.research_job_items;") == [["0"]]
+
+    before = _counts(container, db)
+    second = run_migration(sqlite_path=sqlite_path, container=container, db=db, chunk_size=1)
+    third = run_migration(sqlite_path=sqlite_path, container=container, db=db, chunk_size=1)
+    assert before == _counts(container, db)
+    assert second["clinics"].chunks_processed == third["clinics"].chunks_processed == 0
+
+
 def test_cutover_gate_running_blocks_production_mode(scratch_container, tmp_path):
     from scripts.clinic_db_importer.production_runner import ProductionGuardError, capture_source_fingerprint
     container, db = scratch_container

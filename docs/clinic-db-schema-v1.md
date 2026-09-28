@@ -152,8 +152,9 @@ CRM Prismaの`schema.prisma`は`multiSchema`を使わず`public`単一schemaし�
 
 - `research_jobs.kind`: `hp` / `epark` / `media`
 - `research_jobs.status`: `PAUSED`(default) / `RUNNING` / `COMPLETED` / `RESET` / `BUDGET`
-- `research_job_items.state`: `PENDING`(default) / `RUNNING` / `DONE`(成否は`result`列で表現、
-  `ERROR`/`SKIPPED`という状態は存在しない)
+- `research_job_items.state`: `PENDING`(default) / `RUNNING` / `DONE` / `CANCELLED`。
+  `DONE`は処理完了、`CANCELLED`は未処理の意図的終了を表し、historical cancellation auditを
+  行削除せず保持する。`ERROR`/`SKIPPED`はstateではなく、成否は`DONE`時の`result`列で表現する
 
 Cutover gate:
 
@@ -166,6 +167,7 @@ Cutover gate:
 (`SELECT ... FOR UPDATE SKIP LOCKED`)は、legacy実装のSQLite単一プロセス内lock方式
 (`threading.Lock` + `BEGIN IMMEDIATE`)をそのまま移植できないため、実装工程で新規設計する
 (`docs/clinic-db-runtime-vocab-v1.md`「Jobs」節参照)。
+`CANCELLED`はterminalかつworker claim対象外であり、このgateをblockしない。
 
 ### 3.7 Import audit
 
