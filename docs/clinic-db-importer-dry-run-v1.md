@@ -240,10 +240,14 @@ confirmed website保護ruleに必要な情報(`maps_status`, `maps_website_url`,
 | RUNNING items | **0** |
 | DONE items | 2,636 |
 
-`docs/clinic-db-review-resolution.md` 5節のcutover gate条件(`RUNNING jobs=0` かつ
-`RUNNING items=0`)は**現時点で満たされている**。ただし`PENDING items`が202件残っており、
-完全なcutoverには「これらが処理されるか、意図的に打ち切るかの業務判断」が別途必要になる
-(今回は削除・停止のいずれも行っていない、read-only報告のみ)。
+`docs/clinic-db-review-resolution.md` 5節のfull cutover gate条件は
+`research_job_items.state IN ('PENDING','RUNNING') = 0`(`RUNNING jobs = 0`も併せて)であり、
+**PENDING items 202件が残っているため、full Production cutover gateは未達**。
+
+正確には: **RUNNING activity gate(`RUNNING jobs=0` かつ `RUNNING items=0`)はclear**。
+ただし**full Production cutover gateは未達**であり、この202件を処理完了させるか、
+意図的に打ち切るかの業務判断が別途必要になる(今回は削除・停止・処理のいずれも行っていない、
+read-only報告のみ)。
 
 ---
 
