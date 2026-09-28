@@ -119,11 +119,13 @@ WHERE c.medical_key IS NULL          -- 新規のみ
   AND s.review_flag IS NOT TRUE;     -- 内容不整合フラグが立っていない
 
 -- (b) Pythonがclinic_idを付与した上で明示VALUESでINSERT(例。実運用はexecute_values等でバッチ化)
+-- 列は簡略化のため一部のみ例示。Schema v1確定の全列は docs/clinic-db-schema-v1.md 2.4節を参照。
+-- `website`列は存在しない(単一website統合をしない設計。docs/clinic-db-review-resolution.md 1.3節)。
 INSERT INTO clinic_master.clinics
-  (clinic_id, medical_key, legacy_uuid, clinic_name, prefecture, address, phone, website,
+  (clinic_id, medical_key, legacy_uuid, clinic_name, prefecture, address, phone,
    source, imported_batch_id, created_at, updated_at)
 VALUES
-  (:clinic_id, :medical_key, :legacy_uuid, :clinic_name, :prefecture, :address, :phone, :website,
+  (:clinic_id, :medical_key, :legacy_uuid, :clinic_name, :prefecture, :address, :phone,
    'legacy_sqlite', :batch_id, now(), now());
 ```
 
@@ -191,18 +193,24 @@ DB backup / PITR、corrective migration、または`status` / deactivationを使
 | テーブル | index | 目的 |
 |---|---|---|
 | `clinic_master.clinics` | UNIQUE (`medical_key`) | dedup / lookup(必須) |
-| `clinic_master.clinics` | UNIQUE (`legacy_uuid`)(条件付き、STEP8検証後に確定) | 既存データとの突合 |
+| `clinic_master.clinics` | UNIQUE (`legacy_uuid`) | readonly-audit実測(21/21 valid、重複0)により確定。既存データとの突合 |
 | `clinic_master.clinics` | btree (`prefecture`) | 都道府県別フィルタ(IS/FS/CS業務での絞り込み想定) |
 | `clinic_ops.hp_research` | btree (`clinic_id`, `created_at` DESC) | append-only履歴から「医院ごとの最新machine行」をVIEW(`current_hp_rank`)が高速に取得するため(必須級) |
 | `clinic_ops.hp_rank_feedback` | btree (`clinic_id`, `reviewed_at` DESC) | append-only履歴から「医院ごとの最新レビュー行」をVIEWが高速に取得するため(必須級) |
-| `clinic_ops.maps_results` | btree (`clinic_id`) | JOIN用 |
+| `clinic_ops.maps_results` | btree (`clinic_id`, `created_at` DESC) | append-only履歴から`maps_current` VIEWが最新/confirmed行を取得するため(必須級) |
 | `clinic_ops.maps_results` | btree (`maps_status`) | 未調査/要再調査の抽出 |
 | `clinic_ops.import_logs` | btree (`started_at`) | 直近batchの参照 |
 | `clinic_ops.import_log_items` | btree (`batch_id`) | batch単位の監査照会 |
+
+Schema v1で追加したtable(`manual_override_events` / `comdesk_templates` / `comdesk_original_rows` /
+`research_jobs` / `research_job_items`)のindex・完全なtable一覧は `docs/clinic-db-schema-v1.md` を
+正とする(このファイルの一覧は162,258件移行に直接関わるcore tableのみに限定している)。
 | `clinic_ops.import_log_items` | btree (`clinic_id`) | FK・突合用(NULL許容のためpartial可) |
 
 **見送り候補(過剰indexとして除外、要件が明確になったら追加検討)**:
-- `phone` / `website` への単独index — 現時点で完全一致検索の具体的なユースケースが未確認のため保留。
+- `phone` への単独index — `phone_norm`/`tel_match_key`(Schema v1で追加、`docs/clinic-db-schema-v1.md`
+  2.4節)で代替できるため、raw `phone`列への単独indexは見送る。`website`は`clinic_master.clinics`に
+  存在しないため対象外(`clinic_ops`側VIEWで解決、`docs/clinic-db-review-resolution.md` 1.3節)。
 
 ---
 

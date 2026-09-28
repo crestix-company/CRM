@@ -166,6 +166,11 @@ PostgreSQLのmachine rank許可値はA/B/C/Dのみなので、`UNKNOWN`/`NO_HP`�
 追加していない。実装工程でClinic Leadアプリ本体の依存管理へ明示的に追加する。アプリ本体のruntime設定は
 DB配置ディレクトリに存在しないため、実装前にアプリrepoでもPython versionと依存管理方法を再確認する。
 
+> **注意**: 上記`Python 3.9.6`はDB配置ディレクトリ側で検出された`python3`(システムCommandLineTools)であり、
+> **Clinic Leadアプリ本体のruntimeではない**。アプリ本体の実runtimeは別途 `docs/clinic-db-consumer-contract.md`
+> 1節で確認済みで、実際は **Python 3.12.14**(`.venv/bin/python`)。結論(`uuid6` dependency採用)は
+> 変わらないが、根拠として引用する場合は必ずconsumer-contract.md 1節を参照すること。
+
 ## 8. 調査後検証
 
 この節は全queryとdocs作成後に再取得し、調査前と一致した値を記録する。

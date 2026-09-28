@@ -70,23 +70,35 @@ CREATE INDEX IF NOT EXISTS idx_hp_rank_feedback_clinic_reviewed
 -- (append-onlyであること自体が保護になる)。
 -- 「今のランク」の解決は 004_current_hp_rank_view.sql の VIEW を参照。
 
+-- append-only raw history(docs/clinic-db-review-resolution.md 3.1節)。UPDATE/DELETEしない。
+-- 「現在のMaps状態」は clinic_ops.maps_current VIEW(006参照)で
+-- confirmed website優先の保護ロジックを適用して解決する(単純なlatest rowではない)。
+-- legacy sourceに存在しない place_id/latitude/longitude/rating/review_count はNULLのままにする
+-- (存在しない値を推測・生成しない)。
 CREATE TABLE IF NOT EXISTS clinic_ops.maps_results (
-  id             uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  clinic_id      uuid        NOT NULL,
-  place_id       text        NULL,
-  maps_status    text        NOT NULL,
-  latitude       numeric     NULL,
-  longitude      numeric     NULL,
-  rating         numeric     NULL,
-  review_count   int         NULL,
-  fetched_at     timestamptz NULL,
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
+  id                  uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,  -- row surrogate key、Identity設計の対象外
+  clinic_id           uuid        NOT NULL,
+  place_id            text        NULL,       -- legacy sourceに存在しない。常にNULL
+  maps_status         text        NOT NULL,   -- 例: 'MAPS_MATCHED_WEBSITE' 等。全許可語彙は要確認
+  maps_profile_url    text        NULL,
+  maps_website_url    text        NULL,
+  maps_match_method   text        NULL,
+  latitude            numeric     NULL,       -- legacy sourceに存在しない。常にNULL
+  longitude           numeric     NULL,       -- legacy sourceに存在しない。常にNULL
+  rating              numeric     NULL,       -- legacy sourceに存在しない。常にNULL
+  review_count        int         NULL,       -- legacy sourceに存在しない。常にNULL
+  raw_result          jsonb       NULL,       -- Maps API生レスポンス(営業時間等の未typed evidence)
+  source_batch_id     text        NULL,       -- import provenance
+  source_row_number   int         NULL,       -- import provenance
+  fetched_at          timestamptz NULL,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  -- updated_at は持たない(append-onlyのため行は作成後に変更しない)
 
   CONSTRAINT fk_maps_results_clinic
     FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT
 );
-CREATE INDEX IF NOT EXISTS idx_maps_results_clinic_id ON clinic_ops.maps_results (clinic_id);
+CREATE INDEX IF NOT EXISTS idx_maps_results_clinic_created
+  ON clinic_ops.maps_results (clinic_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_maps_results_status ON clinic_ops.maps_results (maps_status);
 
 CREATE TABLE IF NOT EXISTS clinic_ops.import_logs (

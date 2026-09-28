@@ -35,47 +35,23 @@
 `clinic_master` は医院Masterデータの **Single Source of Truth (SSOT)**。将来CRM(`public`)・IS/FS/CS業務・
 HP調査・Maps調査など複数システムから参照される中心テーブル群を保持する。
 
-### 2.2 中心テーブル: `clinic_master.clinics`
+### 2.2 中心テーブル: `clinic_master.clinics`(Schema v1で確定)
 
-既存SQLite (`clinics.sqlite3`) の実カラムは今回参照していない(Clinic Production DBに触れない制約のため)。
-以下は今回のやり取りで明示された必須項目 + 一般的なMaster設計として妥当な項目のみを設計し、
-**不明な項目はすべて「要確認」と明記する**。
-
-```
-clinic_master.clinics
-------------------------------------------------------------------
-column              type            null  default        note
-------------------------------------------------------------------
-clinic_id           uuid            NOT NULL PK           内部PK。**UUIDv7、Python(Clinic Lead側)で生成し
-                                                            INSERT時に渡す。DB側の `DEFAULT gen_random_uuid()`
-                                                            は使用しない**(UUIDv4混在防止)。STEP4参照。既存UUIDとは別物。
-medical_key         text            NOT NULL UNIQUE       外部/業務キー。dedupの正本。
-legacy_uuid         uuid            NULL     UNIQUE?       既存SQLite/Comdesk等の既存UUIDをそのまま保持
-                                                            (要確認: SQLite側が本当にUUID形式か、他の識別子かは
-                                                            repo/Production を見ていないため未確定)
-clinic_name         text            NOT NULL
-clinic_name_kana    text            NULL                  要確認(SQLiteに存在するか不明)
-prefecture          text            NULL                  正規化方法は要確認(都道府県名 or JISコード)
-address             text            NULL
-postal_code         text            NULL                  要確認
-phone               text            NULL
-website             text            NULL
-status              text            NULL                  要確認(廃業/休止等のフラグがSQLiteにあるか不明)
-source               text           NOT NULL DEFAULT 'legacy_sqlite'
-imported_batch_id   uuid            NULL                   STEP8のrollback設計で使用
-created_at          timestamptz     NOT NULL DEFAULT now()
-updated_at          timestamptz     NOT NULL DEFAULT now()
-------------------------------------------------------------------
-```
-
-制約:
-- `UNIQUE (medical_key)` — dedupの一次防衛線。
-- `legacy_uuid` にUNIQUE制約を張るかは要確認(SQLite側でUUIDが本当に一意かソースを見ないと断定できないため、
-  移行時のSTEP8バリデーションで実測してから確定する)。
-
-未確定項目(要確認リスト):
-- カナ名、診療科/カテゴリ、休診情報、郵便番号正規化、SQLite側の主キー型(INTEGER/TEXT/UUID)、
-  既存UUIDが本当に「UUID型」として妥当な文字列か(SQLiteはtype affinityが緩いため文字列格納の可能性あり)。
+> **このセクションは初期案(未検証の推測ベース)であり、現在は古い。**
+> 実際のSQLite読み取り専用監査(`docs/clinic-db-readonly-audit.md`)・consumer contract調査
+> (`docs/clinic-db-consumer-contract.md`)・REVIEW解消(`docs/clinic-db-review-resolution.md`)を経て、
+> **確定版の全列一覧・分類根拠は `docs/clinic-db-schema-v1.md` を正とする**。実装DDLは
+> `docs/clinic-db-sql-drafts/001_create_clinic_master.sql` を参照。
+>
+> 初期案からの主な変更点:
+> - 単一`website`列は**置かない**(source別にclinic_ops側で保持し、VIEWでpriority解決。理由は
+>   `docs/clinic-db-review-resolution.md` 1.3節)。
+> - 汎用`status`列は**置かない**(実測の結果、`active boolean` / `exclude_reason text` /
+>   `merge_hold boolean` など意味の異なる複数列が実在したため、それぞれ個別に反映)。
+> - `medical_type`, `designation_date`, `owner_equal`, `age_probability`, `active`, `is_new`,
+>   `merged_into_clinic_id`(self FK), `merge_hold`, `exclude_reason`, `source_payload` 等の
+>   MUST_MIGRATE列を追加(`docs/clinic-db-consumer-contract.md` 3節)。
+> - `legacy_uuid` のUNIQUE制約は実測(非空21件、valid 21、重複0)により有効化確定。
 
 ---
 
