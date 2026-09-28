@@ -27,6 +27,8 @@ VALUES
    'legacy_sqlite', :batch_id, now(), now());
 
 -- (c) 行単位監査ログ(SKIP/INSERT/REVIEWそれぞれについてPythonが1行ずつ記録する)
+-- 注: import_log_items.batch_id は clinic_ops.import_logs(batch_id) への RESTRICT FKを持つため、
+-- 事前に clinic_ops.import_logs へ当該batchの行(status='running'等)が作成済みである必要がある。
 -- INSERT確定行: clinic_id を記録
 INSERT INTO clinic_ops.import_log_items (batch_id, medical_key, clinic_id, decision, reason)
 VALUES (:batch_id, :medical_key, :clinic_id, 'insert', NULL);
@@ -43,8 +45,13 @@ VALUES (:batch_id, :medical_key, :existing_clinic_id, 'skip', NULL);
 -- [10] retry-safe / idempotent: 同一batch_idで再実行しても (a) のLEFT JOINにより
 -- 既にINSERT済みのmedical_keyは自然に対象外となるため、途中失敗からの再実行が安全。
 
--- [11] rollback(当該batchのみ、他batch・既存データに影響なし)
--- import_log_items が clinic_id へ ON DELETE RESTRICT のFKを持つため、
--- clinic_master.clinics を削除する前に import_log_items 側の対応行を先に削除する。
--- DELETE FROM clinic_ops.import_log_items WHERE batch_id = :batch_id;
--- DELETE FROM clinic_master.clinics WHERE imported_batch_id = :batch_id;
+-- [11] rollback(正式決定、前リビジョンから変更): import_log_items は一切DELETEしない。
+-- clinic_id は ON DELETE SET NULL のFKに変更済みのため、以下のDELETEを実行すると
+-- import_log_items 側は行ごと残り、対応する clinic_id 列だけが自動的にNULLになる
+-- (batch_id/medical_key/decision/reason/created_at は保持される。監査履歴を消さない)。
+-- 対象は「当該batchで新規INSERTされた行」のみ(imported_batch_idはSKIP行では更新されないため、
+-- 既存行・他batchの行はこの条件に一致せず絶対にDELETEされない)。
+DELETE FROM clinic_master.clinics WHERE imported_batch_id = :batch_id;
+
+-- rollback後、batch自体のstatusを更新する場合(今回は実行しない。将来のrunbook例):
+-- UPDATE clinic_ops.import_logs SET status = 'rolled_back', finished_at = now() WHERE batch_id = :batch_id;

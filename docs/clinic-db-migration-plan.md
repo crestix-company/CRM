@@ -140,17 +140,35 @@ INSERTされる `clinic_id`(UUIDv7)が内部に持つタイムスタンプは、
 - 大量件数(162,258件)は一括1トランザクションではなく、**チャンク分割(例: 1,000〜5,000件単位)**で
   コミットし、失敗時に途中から再開できるようにする。
 
-### [11] rollback手順
+### [11] rollback手順(正式決定、前リビジョンから変更)
 
-- 各行に `imported_batch_id` を持たせているため、問題発生時は
-  `DELETE FROM clinic_master.clinics WHERE imported_batch_id = :batch_id;`
-  で**当該batchのみ**をロールバックできる(他batch・既存データへの影響なし)。
+**方針転換**: 前リビジョンは「先に`import_log_items`をDELETEしてから`clinic_master.clinics`を
+DELETEする」手順だったが、これは**rollbackのたびに監査履歴自体を消してしまう**問題があった。
+正式には **`import_log_items` は一切DELETEしない**。
+
+- 対象は「当該batchで**新規にINSERTされた** `clinic_master.clinics` 行」のみ。
+  ```sql
+  DELETE FROM clinic_master.clinics WHERE imported_batch_id = :batch_id;
+  ```
+  `imported_batch_id` は promotion時のINSERTでのみセットされ、SKIP分岐(既存行)ではそもそも
+  更新されない(`docs/clinic-db-architecture.md` STEP3参照の通り、既存行への書き込みは発生しない)ため、
+  この条件は「今回新規追加した行だけ」に自然に絞り込まれる。**既存行(他batch・過去データ)は
+  この条件に一致せず、絶対にDELETEされない**。
+- `clinic_ops.import_log_items.clinic_id` は `ON DELETE SET NULL` のFKに変更済み
+  (`docs/clinic-db-architecture.md` 3.5節)。したがって上記DELETEを実行すると、対応する
+  `import_log_items` 行は**自動的に`clinic_id`だけがNULLになり、行自体は削除されない**。
+  rollback後も `batch_id` / `medical_key` / `decision` / `reason` / `created_at` は保持される。
+- `import_log_items.batch_id` は `clinic_ops.import_logs(batch_id)` への `ON DELETE RESTRICT` FKを
+  持つため、`import_logs` 側のbatch行自体は(監査の起点として)恒久的に削除できない。
+- rollback完了後、`clinic_ops.import_logs.status` を `'rolled_back'` へ更新できる設計にする
+  (`status`カラムは元々 `'running' | 'completed' | 'failed' | 'rolled_back'` を許容、
+  `docs/clinic-db-architecture.md` 3.4節)。**今回はこのUPDATEも実DBへは適用しない**。SQL例:
+  ```sql
+  -- 実行はしない。将来のrollback runbookとしての設計例。
+  -- UPDATE clinic_ops.import_logs SET status = 'rolled_back', finished_at = now() WHERE batch_id = :batch_id;
+  ```
 - rollbackは自動実行にせず、事前にバックアップ([1])を確認したうえで手動実行する運用とする。
 - staging (`clinic_staging`) は promotion 前段階のため、staging自体の破棄はいつでも無害に実行できる。
-- `clinic_ops.import_log_items`(SKIP/INSERT/REVIEWの行単位監査、`docs/clinic-db-architecture.md` 3.5節)
-  は `clinic_id` へ `ON DELETE RESTRICT` のFKを張っているため、`clinic_master.clinics` のロールバック
-  (DELETE)を行う前に、対応する `import_log_items` 行が存在する場合は削除順序に注意する
-  (先に `import_log_items` 側を削除するか、そちらも同一batch_idで一括ロールバック対象に含める)。
 
 ---
 
@@ -163,9 +181,8 @@ INSERTされる `clinic_id`(UUIDv7)が内部に持つタイムスタンプは、
 | `clinic_master.clinics` | UNIQUE (`medical_key`) | dedup / lookup(必須) |
 | `clinic_master.clinics` | UNIQUE (`legacy_uuid`)(条件付き、STEP8検証後に確定) | 既存データとの突合 |
 | `clinic_master.clinics` | btree (`prefecture`) | 都道府県別フィルタ(IS/FS/CS業務での絞り込み想定) |
-| `clinic_ops.hp_rank_feedback` | btree (`clinic_id`) | clinicごとのfeedback参照(JOIN用) |
-| `clinic_ops.hp_rank_feedback` | btree (`final_rank`) | ランク順ソート/フィルタ |
-| `clinic_ops.hp_rank_feedback` | partial index (`manual_rank IS NOT NULL`) | 人手レビュー済みのみの抽出(運用頻度次第、要確認) |
+| `clinic_ops.hp_research` | btree (`clinic_id`, `created_at` DESC) | append-only履歴から「医院ごとの最新machine行」をVIEW(`current_hp_rank`)が高速に取得するため(必須級) |
+| `clinic_ops.hp_rank_feedback` | btree (`clinic_id`, `reviewed_at` DESC) | append-only履歴から「医院ごとの最新レビュー行」をVIEWが高速に取得するため(必須級) |
 | `clinic_ops.maps_results` | btree (`clinic_id`) | JOIN用 |
 | `clinic_ops.maps_results` | btree (`maps_status`) | 未調査/要再調査の抽出 |
 | `clinic_ops.import_logs` | btree (`started_at`) | 直近batchの参照 |

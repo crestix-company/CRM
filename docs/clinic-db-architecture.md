@@ -85,16 +85,23 @@ updated_at          timestamptz     NOT NULL DEFAULT now()
 `clinic_master.clinics.clinic_id` への cross-schema FOREIGN KEY を張る**(前リビジョンでは「FKなし」を
 暫定推奨していたが、今回の指示で正式にFK採用へ変更)。
 
-対象:
+対象(`ON DELETE RESTRICT`を基本とするテーブル):
 - `clinic_ops.hp_research.clinic_id`
 - `clinic_ops.hp_rank_feedback.clinic_id`
 - `clinic_ops.maps_results.clinic_id`
-- `clinic_ops.import_log_items.clinic_id`(3.5節、新規追加。REVIEW行はNULL許容)
 
-ON DELETE挙動: **RESTRICT を基本とする**(NO ACTIONも許容範囲だが、即時に拒否されRESTRICTのほうが
-意図が明確なため採用)。**CASCADE DELETEは禁止**。理由: `clinic_master.clinics` の1行削除が
-`clinic_ops` 側の調査履歴・feedback履歴を連鎖的に消してしまうのは監査上望ましくない。削除したい場合は、
-まず `clinic_ops` 側の関連行を明示的に処理してから行う運用とする。
+例外(`ON DELETE SET NULL`。3.5節参照):
+- `clinic_ops.import_log_items.clinic_id`
+
+ON DELETE挙動: 上記3テーブルは **RESTRICT を基本とする**(NO ACTIONも許容範囲だが、即時に拒否され
+RESTRICTのほうが意図が明確なため採用)。**CASCADE DELETEは禁止**。理由: `clinic_master.clinics` の
+1行削除が `clinic_ops` 側の調査履歴・feedback履歴を連鎖的に消してしまうのは監査上望ましくない。
+削除したい場合は、まず `clinic_ops` 側の関連行を明示的に処理してから行う運用とする。
+
+`import_log_items` だけは例外的に `ON DELETE SET NULL` を採用する。理由は3.5節・rollback設計
+(`docs/clinic-db-migration-plan.md` STEP[11])を参照。rollbackで `clinic_master.clinics` の
+新規行を削除しても、`import_log_items` の監査行(`batch_id`/`medical_key`/`decision`/`reason`/
+`created_at`)自体は消えず、`clinic_id`列だけがNULLになる。
 
 migration順序への影響: `clinic_master` のテーブルが先に存在しないとFKを張れないため、
 `clinic_ops` のmigrationは常に `clinic_master` のmigrationより後に適用する(SQL draftの
@@ -102,52 +109,73 @@ migration順序への影響: `clinic_master` のテーブルが先に存在し�
 `clinic_master` / `clinic_ops` は同じClinic側migrationツールが管理するため(STEP5)、この順序依存は
 CRM Prisma側の独立性には影響しない。
 
-### 3.1 `clinic_ops.hp_research`
+### 3.1 `clinic_ops.hp_research`(machine側の調査・スコア履歴、append-only)
+
+**正式決定(前リビジョンから変更)**: machine側の調査結果とランクスコアは、このテーブルに
+**append-only(追記のみ、UPDATE/DELETEしない)**で蓄積する。1医院につき複数行(調査/採点の実行ごとに1行)。
+`UNIQUE(clinic_id)` は設けない(元々設けていなかったが、ここで明示的に「append-onlyである」ことを確定する)。
 
 ```
-clinic_id          uuid         NOT NULL
+id                  uuid         NOT NULL PK
+clinic_id           uuid         NOT NULL   -- FK -> clinic_master.clinics(clinic_id) ON DELETE RESTRICT
 url                 text         NULL
 fetch_status        text         NOT NULL   -- e.g. 'pending' | 'ok' | 'error' | 'no_site'
 fetched_at          timestamptz  NULL
 content_ref         text         NULL       -- 本文/スナップショットの保存先参照(実体は別ストレージ想定)
 error_detail        text         NULL
-created_at          timestamptz  NOT NULL DEFAULT now()
-updated_at          timestamptz  NOT NULL DEFAULT now()
-```
-
-### 3.2 `clinic_ops.hp_rank_feedback`
-
-machine算出とmanual(人手)レビューを **明確に別カラムで分離**し、machine再計算がmanual入力を
-上書きしない設計にする。
-
-```
-id                  uuid         NOT NULL PK
-clinic_id           uuid         NOT NULL
-machine_rank        int          NULL
+machine_rank        int          NULL       -- この調査/採点実行時点のmachineランク
 machine_score       numeric      NULL
-manual_rank         int          NULL        -- 人手上書き。machine再計算では絶対に更新しない
-final_rank          int          NULL        -- 下記ロジックで決定(生成カラム or アプリ側計算)
 model_version       text         NULL
 features            jsonb        NULL
-reviewed_at         timestamptz  NULL
-reviewer            text         NULL
-reason              text         NULL
 created_at          timestamptz  NOT NULL DEFAULT now()
-updated_at          timestamptz  NOT NULL DEFAULT now()
 ```
 
-**`manual_rank` 保護ルール(必須設計原則)**:
+`updated_at` は持たない(append-onlyのため、行は作成後に変更されない前提)。「現在のmachineランク」は
+常に「その医院に対する最新の`created_at`を持つ行」として3.2節末尾のVIEWから解決する。
 
-1. machine再計算バッチのUPDATE文は **カラムを明示指定** し、
-   `UPDATE clinic_ops.hp_rank_feedback SET machine_rank = ?, machine_score = ?, model_version = ?, features = ?, updated_at = now() WHERE clinic_id = ?`
-   のように `manual_rank` / `reviewed_at` / `reviewer` / `reason` には**一切触れない**。
-   `INSERT ... ON CONFLICT (clinic_id) DO UPDATE SET machine_rank = EXCLUDED.machine_rank, ...`
-   もmanual系カラムを `SET` 句に含めないことで同様に保護できる。
-2. `final_rank` は `manual_rank IS NOT NULL THEN manual_rank ELSE machine_rank` の優先順位。
-   Postgresの生成カラム(`GENERATED ALWAYS AS`)にするか、書き込み時にアプリ/トリガーで計算するかは選択可能。
-   生成カラムにすればバグの入り込む余地がなくなるため推奨(SQL draft参照)。
-3. 将来的な監査要件が出た場合に備え、`hp_rank_feedback_history`(manual上書きの履歴テーブル)を
-   追加できる余地を残す(今回は作成しない、設計メモのみ)。
+### 3.2 `clinic_ops.hp_rank_feedback`(人間レビューのappend-only履歴)
+
+**正式決定(前リビジョンから変更)**: 従来「1医院1行、machine再計算時にUPDATE」としていた設計を撤回し、
+**人間レビューのappend-only履歴**に変更する。`UNIQUE(clinic_id)` は**削除**。レビューのたびに新しい行を
+INSERTし、過去のレビュー行は**DELETE/UPDATEしない**(監査上の完全な履歴として保持)。
+
+```
+id                          uuid         NOT NULL PK
+clinic_id                   uuid         NOT NULL   -- FK -> clinic_master.clinics(clinic_id) ON DELETE RESTRICT
+manual_rank                 int          NOT NULL
+reviewer                    text         NOT NULL
+reason                      text         NULL
+reviewed_at                 timestamptz  NOT NULL DEFAULT now()
+machine_rank_at_review      int          NULL       -- レビュー時点でのmachineランクのスナップショット
+machine_score_at_review     numeric      NULL
+model_version_at_review     text         NULL
+features_snapshot           jsonb        NULL
+created_at                  timestamptz  NOT NULL DEFAULT now()
+```
+
+`machine_rank_at_review` 等は「レビュー実施時、hp_researchの最新行が何だったか」を固定して記録する
+スナップショットであり、`hp_research` 側が後から新しい行を追加しても**このレビュー行は変化しない**
+(不変の監査証跡)。`manual_rank`/`reviewer`/`reason`もINSERT後は不変。
+
+**`manual_rank` 保護ルール(必須設計原則、append-only化により自動的に満たされる)**:
+
+1. machine側の再計算は `clinic_ops.hp_research` への**INSERTのみ**で完結し、`hp_rank_feedback` の
+   行には一切触れない。UPDATE文自体が存在しないため、「manual系カラムに触れないようUPDATE文を
+   注意深く書く」という前リビジョンの運用ルールが**不要**になった(append-onlyであること自体が保護になる)。
+2. `final_rank`(医院ごとの「今のランク」)はテーブルに固定保存せず、**VIEW/queryで解決する**
+   (下記参照)。manualの最新行があれば `manual_rank`、なければ `hp_research` 側の最新 `machine_rank`。
+3. 過去のレビュー履歴は削除・上書きしない。監査要件は自然に満たされる(履歴テーブルそのものが監査ログ)。
+
+### 3.2.1 `final_rank` 解決VIEW(`clinic_ops.current_hp_rank`)
+
+`docs/clinic-db-sql-drafts/004_current_hp_rank_view.sql` にdraftを配置。ロジック:
+
+- 医院ごとに `hp_research` の最新行(`machine_rank IS NOT NULL` かつ `created_at` 最大)を取得。
+- 医院ごとに `hp_rank_feedback` の最新行(`reviewed_at` 最大)を取得。
+- `final_rank = COALESCE(最新manual_rank, 最新machine_rank)`。
+
+machine側が新しい調査行を追加しても(=`hp_research`にINSERT)、`hp_rank_feedback`の過去レビューは
+一切変更されないため、**machine再計算によって過去のmanual reviewが消える・上書きされることは構造上ない**。
 
 ### 3.3 `clinic_ops.maps_results`
 
@@ -187,17 +215,31 @@ SKIP / INSERT / REVIEW の**行単位監査**を残すためのテーブル。`c
 
 ```
 id                  uuid         NOT NULL PK
-batch_id            uuid         NOT NULL   -- clinic_ops.import_logs.batch_id と対応(FKなし、値参照のみ)
+batch_id            uuid         NOT NULL   -- FK -> clinic_ops.import_logs(batch_id) ON DELETE RESTRICT
 medical_key         text         NOT NULL   -- 監査用スナップショット(下記「例外理由」参照)
-clinic_id           uuid         NULL       -- INSERT確定行のみ非NULL。REVIEW/SKIPはNULL
+clinic_id           uuid         NULL       -- INSERT確定行のみ非NULL。REVIEW/SKIP、rollback後はNULL
 decision            text         NOT NULL   -- 'skip' | 'insert' | 'review'
 reason              text         NULL
 created_at          timestamptz  NOT NULL DEFAULT now()
 ```
 
-`clinic_id` への FK は `clinic_master.clinics(clinic_id)` に対して `ON DELETE RESTRICT`。NULL許容のため
-REVIEW行(まだclinic_master側に存在しない、またはUUIDが発行されただけで未INSERT)もこのテーブルには
-安全に記録できる。
+**FK設計(正式決定、前リビジョンから変更)**:
+
+- `batch_id` → `clinic_ops.import_logs(batch_id)` に `ON DELETE RESTRICT` のFKを新規に追加する。
+  以前は「FKなし、値参照のみ」だったが、batch単位の監査完全性を担保するため正式にFK化する。
+  `import_logs` 側の行を削除できないため、batch監査ログは恒久的に保持される。
+- `clinic_id` → `clinic_master.clinics(clinic_id)` は `ON DELETE RESTRICT` から **`ON DELETE SET NULL`
+  に変更**(他の`clinic_ops`テーブルとは異なる、意図的な例外)。
+
+**なぜ`import_log_items`だけ`SET NULL`にするか(前リビジョンの`RESTRICT`から変更した理由)**:
+`RESTRICT`のままだと、rollback時に「このbatchで新規INSERTされた`clinic_master.clinics`行」を
+削除しようとした瞬間、その行を参照する`import_log_items`行がFK違反でDELETEをブロックしてしまう。
+これを回避するために前リビジョンでは「先に`import_log_items`をDELETEしてから`clinic_master.clinics`を
+DELETEする」手順にしていたが、それでは**rollbackのたびに監査履歴自体が消えてしまう**という問題があった。
+`SET NULL`にすることで、`clinic_master.clinics`側の行を削除しても`import_log_items`側は
+`batch_id`/`medical_key`/`decision`/`reason`/`created_at`を保持したまま`clinic_id`列だけが
+自動的にNULLになり、**「どのmedical_keyが、いつ、どのbatchで、どう判定されたか」という監査事実は
+rollback後も消えない**(`docs/clinic-db-migration-plan.md` STEP[11]参照)。
 
 **medical_keyをこのテーブルにのみ例外的に重複保存する理由**:
 `clinic_ops` の他テーブル(`hp_research`/`hp_rank_feedback`/`maps_results`)は `clinic_id` のみで参照し、
