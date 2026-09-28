@@ -17,34 +17,34 @@ Migration actionは`COPY`, `TRANSFORM`, `DERIVE`, `REVIEW`, `DO_NOT_MIGRATE`の�
 | `clinics.medical_key` | TEXT | clinic_master | clinics | medical_key | text | 非空のみtrim/同一性確認後COPY | no | REVIEW | 空文字16件はINSERTせずREVIEW |
 | `clinics.uuid` | TEXT | clinic_master | clinics | legacy_uuid | uuid | `'' -> NULL`; canonical UUIDをcast | yes | TRANSFORM | 非空21件valid/unique。まだUNIQUE制約は付けない |
 | `clinics.clinic_name` | TEXT | clinic_master | clinics | clinic_name | text | identity | no | COPY | 空文字品質はpromotion前検証対象 |
-| `clinics.name_norm` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | target列なし。再生成可能な正規化値 |
-| `clinics.name_prefix` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | target列なし |
+| `clinics.name_norm` | TEXT | clinic_master | generated/search projection | name_norm | text | raw nameから現normalizerで再生成 | no | DERIVE | matching consumerあり。algorithm version固定必須 |
+| `clinics.name_prefix` | TEXT | clinic_master | generated/search projection | name_prefix | text | name_norm先頭2文字 | no | DERIVE | matching/index consumer |
 | `clinics.phone` | TEXT | clinic_master | clinics | phone | text | `'' -> NULL` | yes | TRANSFORM | raw phoneを保持 |
-| `clinics.phone_norm` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | target列なし。派生値 |
-| `clinics.tel_match_key` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | target列なし。派生値 |
+| `clinics.phone_norm` | TEXT | clinic_master | generated/search projection | phone_norm | text | raw phoneから現normalizerで再生成 | no | DERIVE | search consumer |
+| `clinics.tel_match_key` | TEXT | clinic_master | generated/search projection | tel_match_key | text | raw phoneから現normalizerで再生成 | no | DERIVE | Maps matching consumer |
 | `clinics.address` | TEXT | clinic_master | clinics | address | text | `'' -> NULL` | yes | TRANSFORM | raw addressを保持 |
-| `clinics.address_norm` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | target列なし。派生値 |
+| `clinics.address_norm` | TEXT | clinic_master | generated/search projection | address_norm | text | raw addressから現normalizerで再生成 | no | DERIVE | Maps matching consumer |
 | `clinics.prefecture` | TEXT | clinic_master | clinics | prefecture | text | `'' -> NULL`; 表記検証 | yes | TRANSFORM | JISコード化は未決定 |
 | `base_json.postal_code` | JSON text | clinic_master | clinics | postal_code | text | JSON extract; `'' -> NULL` | yes | TRANSFORM | 実在21件のみ |
 | `clinics.hp_url` | TEXT | clinic_master | clinics | website | text | VERIFIEDかつ非空を候補化 | yes | REVIEW | Maps websiteとの優先規則をpromotion前に確定 |
-| `clinics.active` | INTEGER | clinic_master | clinics | status | text | booleanと`effective_json.status`から状態語彙へ変換 | yes | DERIVE | status語彙未確定のため要レビュー |
-| `clinics.first_seen_at` | TEXT | clinic_master | clinics | created_at | timestamptz | timestamp parse | no | REVIEW | first_seenとDB登録日時の意味差を承認後のみ使用 |
-| `clinics.last_seen_at` | TEXT | clinic_master | clinics | updated_at | timestamptz | timestamp parse | no | REVIEW | last_seenとrow更新日時の意味差あり |
+| `clinics.active` | INTEGER | clinic_master | clinics | active (proposed) | boolean | 0/1→boolean | no | TRANSFORM | MUST_MIGRATE: default filter/job/metrics |
+| `clinics.first_seen_at` | TEXT | clinic_master | clinics | first_seen_at (proposed) | timestamptz | timestamp parse | no | TRANSFORM | SHOULD_MIGRATE: DB created_atとは意味が異なる |
+| `clinics.last_seen_at` | TEXT | clinic_master | clinics | last_seen_at (proposed) | timestamptz | timestamp parse | no | TRANSFORM | SHOULD_MIGRATE: DB updated_atとは意味が異なる |
 | constant | — | clinic_master | clinics | source | text | `'legacy_sqlite'` | no | DERIVE | target defaultと一致 |
 | migration batch | — | clinic_master | clinics | imported_batch_id | uuid | current batch ID | yes | DERIVE | rollback attribution |
-| `clinics.medical_type` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.designation_date` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.recent_until` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.registration_reason` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.owner_equal` | INTEGER | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.age_probability` | REAL | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.departments_json` | TEXT/JSON | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし; valid JSON |
-| `clinics.source_as_of_date` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | source provenance; current target列なし |
-| `clinics.base_json` | TEXT/JSON | — | — | — | — | 必要な正本列のみ個別extract | — | DO_NOT_MIGRATE | blob全体は移さない |
-| `clinics.effective_json` | TEXT/JSON | — | — | — | — | HP/Mapsの実キーのみ個別extract | — | DO_NOT_MIGRATE | blob全体は移さない |
-| `clinics.is_new` | INTEGER | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.merged_into` | INTEGER | — | — | — | — | merge関係をpromotion前に解決 | — | REVIEW | merged rowを自動INSERTしない |
-| `clinics.merge_hold` | INTEGER | — | — | — | — | hold対象をpromotionから除外 | — | REVIEW | migration controlとして利用 |
+| `clinics.medical_type` | TEXT | clinic_master | clinics | medical_type (proposed) | text | identity | yes | COPY | MUST_MIGRATE: filter/job/source importで使用 |
+| `clinics.designation_date` | TEXT | clinic_master | clinics | designation_date (proposed) | date | empty→NULL; date parse | yes | TRANSFORM | MUST_MIGRATE: 指定日/新規開業filterとexport |
+| `clinics.recent_until` | TEXT | clinic_master | clinics/view | recent_until (derived) | date | designation_date + 10 years | yes | DERIVE | consumerあり。正本から安全に再生成 |
+| `clinics.registration_reason` | TEXT | clinic_master | clinics | registration_reason (proposed) | text | empty→NULL | yes | TRANSFORM | MUST_MIGRATE: 新規指定filter |
+| `clinics.owner_equal` | INTEGER | clinic_master | clinics | owner_equal (proposed) | boolean | 0/1→boolean | yes | TRANSFORM | MUST_MIGRATE: 営業filter |
+| `clinics.age_probability` | REAL | clinic_master | clinics | age_probability (proposed) | numeric | numeric cast | yes | TRANSFORM | MUST_MIGRATE: filter/UI/metrics |
+| `clinics.departments_json` | TEXT/JSON | clinic_master | clinics/child | departments (proposed) | text[]/rows | JSON array decode | yes | TRANSFORM | MUST_MIGRATE: 診療科filter |
+| `clinics.source_as_of_date` | TEXT | clinic_master | clinics | source_as_of_date (proposed) | date | empty→NULL; date parse | yes | TRANSFORM | MUST_MIGRATE: stale import防止 |
+| `clinics.base_json` | TEXT/JSON | clinic_master | clinics | source_payload (proposed) | jsonb | valid JSON→jsonb | yes | TRANSFORM | MUST_MIGRATE: projection/import/mergeの入力 |
+| `clinics.effective_json` | TEXT/JSON | clinic_master | view/projection | current clinic projection | jsonb | base+research+manualから再生成 | yes | DERIVE | consumerあり。blobのblind copyではなく再projection |
+| `clinics.is_new` | INTEGER | clinic_master | clinics | is_new (proposed) | boolean | 0/1→boolean | no | TRANSFORM | MUST_MIGRATE: filter/job priority |
+| `clinics.merged_into` | INTEGER | clinic_master | clinics | merged_into_clinic_id (proposed) | uuid | SQLite id→new UUIDv7 lookup | yes | TRANSFORM | MUST_MIGRATE: canonical dereference/merge audit |
+| `clinics.merge_hold` | INTEGER | clinic_master | clinics | merge_hold (proposed) | boolean | 0/1→boolean | no | TRANSFORM | MUST_MIGRATE: 誤営業・誤調査防止 |
 
 `clinic_name_kana`は対応するSQLite列が存在しないためNULL。`postal_code`は`clinics`の物理列ではなく、
 `base_json`内に21件だけ存在する。
@@ -71,13 +71,13 @@ Migration actionは`COPY`, `TRANSFORM`, `DERIVE`, `REVIEW`, `DO_NOT_MIGRATE`の�
 | `clinics.hp_status` | TEXT | clinic_ops | hp_research | fetch_status | text | `research_results`欠落時のsummary候補 | no | REVIEW | append-only event時刻がないため自動行生成しない |
 | `clinics.hp_rank` | TEXT | clinic_ops | hp_research | machine_rank | text | A/B/C/Dのみ | yes | REVIEW | summaryを履歴と誤認しない |
 | `clinics.signal_count` | INTEGER | clinic_ops | hp_research | features | jsonb | named JSON key | yes | TRANSFORM | research rowに紐づく場合のみ |
-| `clinics.hot_status` | TEXT | clinic_ops | hp_research | features | jsonb | named JSON key | yes | TRANSFORM | research rowに紐づく場合のみ |
-| `clinics.treatments_json` | TEXT/JSON | clinic_ops | hp_research | features | jsonb | named JSON key | yes | TRANSFORM | 162,258/162,258 valid |
-| `clinics.signals_json` | TEXT/JSON | clinic_ops | hp_research | features | jsonb | named JSON key | yes | TRANSFORM | 162,258/162,258 valid |
+| `clinics.hot_status` | TEXT | clinic_ops | current HP projection | hot_status (proposed) | text | research/manualから再計算 | yes | DERIVE | consumerあり。scoring version固定必須 |
+| `clinics.treatments_json` | TEXT/JSON | clinic_ops | current HP projection | treatment_categories (proposed) | text[]/jsonb | JSON array decode | yes | TRANSFORM | MUST_MIGRATE: 治療カテゴリfilter。162,258/162,258 valid |
+| `clinics.signals_json` | TEXT/JSON | clinic_ops | current HP projection | confirmed_signals (proposed) | text[]/jsonb | JSON array decode | yes | TRANSFORM | MUST_MIGRATE: 広告/signals filter。162,258/162,258 valid |
 | `hp_pages.clinic_id` | INTEGER | clinic_ops | hp_research | clinic_id | uuid | SQLite id→new UUIDv7 lookup | no | REVIEW | pageとresearch snapshotの関連付け方式を確定後に使用 |
 | `hp_pages.checked_at` | TEXT | clinic_ops | hp_research | fetched_at | timestamptz | timestamp parse | yes | REVIEW | page単位時刻をresearch実行時刻と同一視しない |
-| `research_job_items.*` | mixed | — | — | — | — | — | — | DO_NOT_MIGRATE | queue/lease runtime状態; target表なし |
-| `research_jobs.*` | mixed | — | — | — | — | — | — | DO_NOT_MIGRATE | job control; target表なし |
+| `research_job_items.*` | mixed | runtime | research_job_items (future) | runtime state | mixed | legacy in-flight rowsはcutover前に停止/完了 | — | DO_NOT_MIGRATE | RUNTIME_ONLY: 新Postgres runtimeには同等queue必須 |
+| `research_jobs.*` | mixed | runtime | research_jobs (future) | runtime state | mixed | legacy in-flight rowsはcutover前に停止/完了 | — | DO_NOT_MIGRATE | RUNTIME_ONLY: pause/resume UIに必要 |
 
 ## 3. Human feedback mapping
 
@@ -109,18 +109,18 @@ manual rankと推測してはならない。
 | `result_json.longitude` | absent | clinic_ops | maps_results | longitude | numeric | NULL | yes | DERIVE | sourceに存在しない |
 | `result_json.rating` | absent | clinic_ops | maps_results | rating | numeric | NULL | yes | DERIVE | sourceに存在しない |
 | `result_json.review_count` | absent | clinic_ops | maps_results | review_count | int | NULL | yes | DERIVE | sourceに存在しない |
-| `google_maps_results.maps_profile_url` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current maps target列なし |
-| `google_maps_results.maps_website_url` | TEXT | clinic_master | clinics | website | text | HP URLとの優先判定 | yes | REVIEW | target maps列なし。自動上書き禁止 |
-| `google_maps_results.maps_match_method` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `google_maps_results.result_json` | TEXT/JSON | — | — | — | — | 必要なら将来専用features列を設計 | — | DO_NOT_MIGRATE | 15,339/15,339 validだがcurrent targetにjsonb列なし |
-| `google_maps_results.batch_id` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | maps targetにlegacy batch列なし |
-| `google_maps_results.row_number` | INTEGER | — | — | — | — | — | — | DO_NOT_MIGRATE | import provenance; target列なし |
-| `clinics.maps_presence_status` | TEXT | clinic_ops | maps_results | maps_status | text | summary fallback候補 | no | REVIEW | 履歴15,339行を優先; summaryの二重投入禁止 |
-| `clinics.maps_checked_at` | TEXT | clinic_ops | maps_results | fetched_at | timestamptz | timestamp parse | yes | REVIEW | summary行を作る場合のみ |
-| `clinics.maps_profile_url` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.maps_website_url` | TEXT | clinic_master | clinics | website | text | HP URLとの優先判定 | yes | REVIEW | current masterにwebsiteは1列のみ |
-| `clinics.maps_match_method` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし |
-| `clinics.exclude_reason` | TEXT | — | — | — | — | — | — | DO_NOT_MIGRATE | current target列なし; 削除せずsource snapshotで保持 |
+| `google_maps_results.maps_profile_url` | TEXT | clinic_ops | maps_results | maps_profile_url (proposed) | text | empty→NULL | yes | TRANSFORM | SHOULD_MIGRATE: Maps UI/evidence |
+| `google_maps_results.maps_website_url` | TEXT | clinic_ops | maps_results | maps_website_url (proposed) | text | empty→NULL | yes | TRANSFORM | SHOULD_MIGRATE: confirmed HP evidence |
+| `google_maps_results.maps_match_method` | TEXT | clinic_ops | maps_results | maps_match_method (proposed) | text | empty→NULL | yes | TRANSFORM | SHOULD_MIGRATE: match audit |
+| `google_maps_results.result_json` | TEXT/JSON | clinic_ops | maps_results | raw_result (proposed) | jsonb | valid JSON→jsonb | yes | TRANSFORM | SHOULD_MIGRATE: 営業時間等のraw evidence |
+| `google_maps_results.batch_id` | TEXT | clinic_ops | maps_results | source_batch_id (proposed) | text | identity | yes | COPY | SHOULD_MIGRATE: import provenance |
+| `google_maps_results.row_number` | INTEGER | clinic_ops | maps_results | source_row_number (proposed) | int | identity | yes | COPY | SHOULD_MIGRATE: source row追跡 |
+| `clinics.maps_presence_status` | TEXT | clinic_ops | current Maps projection | maps_status | text | protected current snapshotとして移行 | no | TRANSFORM | MUST_MIGRATE: filter/job/UI。latest rawだけからderiveしない |
+| `clinics.maps_checked_at` | TEXT | clinic_ops | current Maps projection | fetched_at | timestamptz | timestamp parse | yes | TRANSFORM | MUST_MIGRATE: current snapshot時点 |
+| `clinics.maps_profile_url` | TEXT | clinic_ops | current Maps projection | maps_profile_url (proposed) | text | empty→NULL | yes | TRANSFORM | MUST_MIGRATE: detail UI |
+| `clinics.maps_website_url` | TEXT | clinic_ops | current Maps projection | maps_website_url (proposed) | text | empty→NULL | yes | TRANSFORM | MUST_MIGRATE: filter/research/Comdesk export |
+| `clinics.maps_match_method` | TEXT | clinic_ops | current Maps projection | maps_match_method (proposed) | text | empty→NULL | yes | TRANSFORM | current protected snapshotの根拠 |
+| `clinics.exclude_reason` | TEXT | clinic_master | clinics | exclude_reason (proposed) | text | empty→NULL | yes | TRANSFORM | MUST_MIGRATE: Comdesk営業対象除外 |
 
 ## 5. Promotion gates
 
