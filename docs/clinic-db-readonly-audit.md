@@ -161,9 +161,10 @@ PostgreSQLのmachine rank許可値はA/B/C/Dのみなので、`UNKNOWN`/`NO_HP`�
 | `requirements*.txt` | not found under the DB directory |
 | `.python-version` / `runtime.txt` / Pipfile / lockfile | not found under the DB directory |
 
-現在確認できるruntimeではstdlib `uuid.uuid7()`も`uuid6`も使用できない。package install禁止の今回の
-範囲では、`docs/clinic-uuid-strategy.md`記載の**依存ゼロRFC 9562 UUIDv7 fallback**を採用候補とする。
-Clinic Leadアプリ本体のruntime設定はDB配置ディレクトリに存在しないため、実装時にはアプリrepoで再確認する。
+現在確認できるPython 3.9.6ではstdlib `uuid.uuid7()`を利用できないため、実装方式は
+**`uuid6` fallbackを採用する**。ただし`uuid6`は現在未導入であり、package install禁止の今回の調査では
+追加していない。実装工程でClinic Leadアプリ本体の依存管理へ明示的に追加する。アプリ本体のruntime設定は
+DB配置ディレクトリに存在しないため、実装前にアプリrepoでもPython versionと依存管理方法を再確認する。
 
 ## 8. 調査後検証
 
