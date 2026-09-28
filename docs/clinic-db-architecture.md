@@ -96,7 +96,10 @@ updated_at          timestamptz     NOT NULL DEFAULT now()
 ON DELETE挙動: 上記3テーブルは **RESTRICT を基本とする**(NO ACTIONも許容範囲だが、即時に拒否され
 RESTRICTのほうが意図が明確なため採用)。**CASCADE DELETEは禁止**。理由: `clinic_master.clinics` の
 1行削除が `clinic_ops` 側の調査履歴・feedback履歴を連鎖的に消してしまうのは監査上望ましくない。
-削除したい場合は、まず `clinic_ops` 側の関連行を明示的に処理してから行う運用とする。
+hard DELETE rollbackを許可するのは、**PRE-CUTOVERかつhp_research / hp_rank_feedback /
+maps_results等のops業務データ生成前**に限る。POST-CUTOVERまたはops生成後はhard DELETEを禁止し、
+previous SQLite backup、DB backup / PITR、corrective migration、またはstatus / deactivationで復旧する。
+RESTRICTを回避するためにops履歴や監査履歴を消して強制rollbackしてはならない。
 
 `import_log_items` だけは例外的に `ON DELETE SET NULL` を採用する。理由は3.5節・rollback設計
 (`docs/clinic-db-migration-plan.md` STEP[11])を参照。rollbackで `clinic_master.clinics` の
@@ -123,7 +126,7 @@ fetch_status        text         NOT NULL   -- e.g. 'pending' | 'ok' | 'error' |
 fetched_at          timestamptz  NULL
 content_ref         text         NULL       -- 本文/スナップショットの保存先参照(実体は別ストレージ想定)
 error_detail        text         NULL
-machine_rank        int          NULL       -- この調査/採点実行時点のmachineランク
+machine_rank        text         NULL       -- この調査/採点実行時点のmachineランク。NULLまたは'A'|'B'|'C'|'D'
 machine_score       numeric      NULL
 model_version       text         NULL
 features            jsonb        NULL
@@ -142,11 +145,11 @@ INSERTし、過去のレビュー行は**DELETE/UPDATEしない**(監査上の�
 ```
 id                          uuid         NOT NULL PK
 clinic_id                   uuid         NOT NULL   -- FK -> clinic_master.clinics(clinic_id) ON DELETE RESTRICT
-manual_rank                 int          NOT NULL
+manual_rank                 text         NOT NULL   -- 'A'|'B'|'C'|'D'
 reviewer                    text         NOT NULL
 reason                      text         NULL
 reviewed_at                 timestamptz  NOT NULL DEFAULT now()
-machine_rank_at_review      int          NULL       -- レビュー時点でのmachineランクのスナップショット
+machine_rank_at_review      text         NULL       -- レビュー時点のmachineランク。NULLまたは'A'|'B'|'C'|'D'
 machine_score_at_review     numeric      NULL
 model_version_at_review     text         NULL
 features_snapshot           jsonb        NULL
@@ -156,6 +159,10 @@ created_at                  timestamptz  NOT NULL DEFAULT now()
 `machine_rank_at_review` 等は「レビュー実施時、hp_researchの最新行が何だったか」を固定して記録する
 スナップショットであり、`hp_research` 側が後から新しい行を追加しても**このレビュー行は変化しない**
 (不変の監査証跡)。`manual_rank`/`reviewer`/`reason`もINSERT後は不変。
+
+HP Rankは数値encodingせず、`machine_rank` / `manual_rank` / `machine_rank_at_review` の3列をすべて
+`text`で保持する。許可値は`'A' | 'B' | 'C' | 'D'`。machine系2列はNULLを許容し、`manual_rank`は
+NOT NULLとする。SQL draftでは各列にCHECK制約を置き、許可値以外を拒否する。
 
 **`manual_rank` 保護ルール(必須設計原則、append-only化により自動的に満たされる)**:
 
@@ -170,8 +177,9 @@ created_at                  timestamptz  NOT NULL DEFAULT now()
 
 `docs/clinic-db-sql-drafts/004_current_hp_rank_view.sql` にdraftを配置。ロジック:
 
-- 医院ごとに `hp_research` の最新行(`machine_rank IS NOT NULL` かつ `created_at` 最大)を取得。
-- 医院ごとに `hp_rank_feedback` の最新行(`reviewed_at` 最大)を取得。
+- 医院ごとに `hp_research` の最新行を`machine_rank IS NOT NULL`かつ
+  `ORDER BY created_at DESC, id DESC`で取得する。
+- 医院ごとに `hp_rank_feedback` の最新行を`ORDER BY reviewed_at DESC, id DESC`で取得する。
 - `final_rank = COALESCE(最新manual_rank, 最新machine_rank)`。
 
 machine側が新しい調査行を追加しても(=`hp_research`にINSERT)、`hp_rank_feedback`の過去レビューは
@@ -217,13 +225,17 @@ SKIP / INSERT / REVIEW の**行単位監査**を残すためのテーブル。`c
 id                  uuid         NOT NULL PK
 batch_id            uuid         NOT NULL   -- FK -> clinic_ops.import_logs(batch_id) ON DELETE RESTRICT
 medical_key         text         NOT NULL   -- 監査用スナップショット(下記「例外理由」参照)
-clinic_id           uuid         NULL       -- INSERT確定行のみ非NULL。REVIEW/SKIP、rollback後はNULL
+clinic_id           uuid         NULL       -- INSERT=新規ID、SKIP=既存ID、REVIEW/rollback済みINSERT=NULL
 decision            text         NOT NULL   -- 'skip' | 'insert' | 'review'
 reason              text         NULL
 created_at          timestamptz  NOT NULL DEFAULT now()
 ```
 
 **FK設計(正式決定、前リビジョンから変更)**:
+
+- `clinic_id`の記録規則は、INSERTなら今回新規発行した`clinic_id`、SKIPなら同じ`medical_key`を持つ
+  既存医院の`clinic_id`、REVIEWならNULLとする。PRE-CUTOVER rollbackでINSERT行が削除された場合は、
+  `ON DELETE SET NULL`により、その監査行の`clinic_id`だけが事後的にNULLになる。
 
 - `batch_id` → `clinic_ops.import_logs(batch_id)` に `ON DELETE RESTRICT` のFKを新規に追加する。
   以前は「FKなし、値参照のみ」だったが、batch単位の監査完全性を担保するため正式にFK化する。

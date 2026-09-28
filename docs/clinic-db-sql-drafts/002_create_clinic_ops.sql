@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS clinic_ops.hp_research (
   fetched_at     timestamptz NULL,
   content_ref    text        NULL,
   error_detail   text        NULL,
-  machine_rank   int         NULL,
+  machine_rank   text        NULL,       -- HP Rank表記(A/B/C/D)。数値encodingしない
   machine_score  numeric     NULL,
   model_version  text        NULL,
   features       jsonb       NULL,
@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS clinic_ops.hp_research (
   -- updated_at は持たない(append-onlyのため行は作成後に変更しない)
 
   CONSTRAINT fk_hp_research_clinic
-    FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT
+    FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT,
+  CONSTRAINT chk_hp_research_machine_rank
+    CHECK (machine_rank IS NULL OR machine_rank IN ('A', 'B', 'C', 'D'))
 );
 CREATE INDEX IF NOT EXISTS idx_hp_research_clinic_created
   ON clinic_ops.hp_research (clinic_id, created_at DESC);
@@ -42,18 +44,22 @@ CREATE INDEX IF NOT EXISTS idx_hp_research_clinic_created
 CREATE TABLE IF NOT EXISTS clinic_ops.hp_rank_feedback (
   id                          uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   clinic_id                   uuid        NOT NULL,
-  manual_rank                 int         NOT NULL,
+  manual_rank                 text        NOT NULL,  -- HP Rank表記(A/B/C/D)。NOT NULLのためNULLは許容しない
   reviewer                    text        NOT NULL,
   reason                      text        NULL,
   reviewed_at                 timestamptz NOT NULL DEFAULT now(),
-  machine_rank_at_review      int         NULL,
+  machine_rank_at_review      text        NULL,       -- レビュー時点のmachine_rankスナップショット(A/B/C/D)
   machine_score_at_review     numeric     NULL,
   model_version_at_review     text        NULL,
   features_snapshot           jsonb       NULL,
   created_at                  timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT fk_hp_rank_feedback_clinic
-    FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT
+    FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT,
+  CONSTRAINT chk_hp_rank_feedback_manual_rank
+    CHECK (manual_rank IN ('A', 'B', 'C', 'D')),
+  CONSTRAINT chk_hp_rank_feedback_machine_rank_at_review
+    CHECK (machine_rank_at_review IS NULL OR machine_rank_at_review IN ('A', 'B', 'C', 'D'))
 );
 CREATE INDEX IF NOT EXISTS idx_hp_rank_feedback_clinic_reviewed
   ON clinic_ops.hp_rank_feedback (clinic_id, reviewed_at DESC);
@@ -100,6 +106,12 @@ CREATE INDEX IF NOT EXISTS idx_import_logs_started_at ON clinic_ops.import_logs 
 -- SKIP/INSERT/REVIEW の行単位監査(docs/clinic-db-architecture.md 3.5節)
 -- medical_key を例外的にスナップショット保持する(REVIEW行・rollback後はclinic_idがNULLになるため)。
 --
+-- clinic_id の値ルール(正式決定。003_promotion_example.sqlの実装を正としてここに統一):
+--   'insert' → 新規発行したclinic_idを保存
+--   'skip'   → 既存clinic_id(そのmedical_keyの現行clinic_master.clinics.clinic_id)を保存
+--   'review' → NULL(まだclinic_masterに存在しない)
+--   rollback済みの'insert'行 → ON DELETE SET NULL により事後的にNULL化
+--
 -- FK設計(正式決定、前リビジョンから変更):
 -- - batch_id は import_logs へ RESTRICT のFKを新規に張る(batch監査ログを恒久保持するため)。
 -- - clinic_id は RESTRICT ではなく SET NULL を採用。rollbackで clinic_master.clinics 側の
@@ -109,7 +121,7 @@ CREATE TABLE IF NOT EXISTS clinic_ops.import_log_items (
   id           uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,  -- row surrogate key、Identity設計の対象外
   batch_id     uuid        NOT NULL,
   medical_key  text        NOT NULL,
-  clinic_id    uuid        NULL,       -- INSERT確定行のみ非NULL。SKIP/REVIEW、rollback後はNULL
+  clinic_id    uuid        NULL,       -- insert=新規clinic_id / skip=既存clinic_id / review=NULL / rollback後=NULL
   decision     text        NOT NULL,   -- 'skip' | 'insert' | 'review'
   reason       text        NULL,
   created_at   timestamptz NOT NULL DEFAULT now(),

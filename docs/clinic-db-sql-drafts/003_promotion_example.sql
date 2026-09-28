@@ -46,6 +46,14 @@ VALUES (:batch_id, :medical_key, :existing_clinic_id, 'skip', NULL);
 -- 既にINSERT済みのmedical_keyは自然に対象外となるため、途中失敗からの再実行が安全。
 
 -- [11] rollback(正式決定、前リビジョンから変更): import_log_items は一切DELETEしない。
+-- PRECONDITION (両方必須):
+--   1. PRE-CUTOVERであること。
+--   2. 対象医院についてhp_research / hp_rank_feedback / maps_results等のops業務データが
+--      まだ1行も生成されていないこと。
+-- この条件を満たす期間だけ、imported_batch_id単位のhard DELETE rollbackを許可する。
+-- POST-CUTOVERまたはops業務データ生成後はhard DELETE rollback禁止。通常のops FKは
+-- ON DELETE RESTRICTのためDELETEを拒否する。ops/監査履歴を消して強制rollbackしてはならない。
+-- 復旧はprevious SQLite backup、DB backup / PITR、corrective migration、status / deactivationを使う。
 -- clinic_id は ON DELETE SET NULL のFKに変更済みのため、以下のDELETEを実行すると
 -- import_log_items 側は行ごと残り、対応する clinic_id 列だけが自動的にNULLになる
 -- (batch_id/medical_key/decision/reason/created_at は保持される。監査履歴を消さない)。

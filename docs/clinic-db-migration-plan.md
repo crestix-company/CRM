@@ -96,6 +96,9 @@ UUID形式でない値)を洗い出す。
 | INSERT | production に存在しない新規 `medical_key` | `clinic_master.clinics` へ挿入。`imported_batch_id` に今回のbatch_idを記録 | Python側で新規UUIDv7を発行し、INSERT文に渡す |
 | REVIEW | `medical_key` が欠落/不正、または重複キー内で内容が食い違う | production へはINSERTしない。`clinic_ops.import_log_items` にdecision='review'で記録 | UUIDv7を発行してよいが**productionへは絶対にINSERTしない**。発行だけして使われない"orphan ID"は無害(UUIDはグローバルな採番台帳を消費しないため、破棄しても後続処理に一切影響しない) |
 
+`import_log_items.clinic_id`は、INSERTでは新規発行したID、SKIPでは既存医院のID、REVIEWではNULLを
+記録する。rollback済みINSERTのIDだけは、医院行の削除時に`ON DELETE SET NULL`でNULLへ変わる。
+
 **手順(Python側が主導、SQLはPythonから発行されるパラメータ化クエリの例)**:
 
 1. Pythonが `clinic_staging.clinics_raw` から `medical_key` 単位で新規行(`clinic_master.clinics` に
@@ -145,6 +148,15 @@ INSERTされる `clinic_id`(UUIDv7)が内部に持つタイムスタンプは、
 **方針転換**: 前リビジョンは「先に`import_log_items`をDELETEしてから`clinic_master.clinics`を
 DELETEする」手順だったが、これは**rollbackのたびに監査履歴自体を消してしまう**問題があった。
 正式には **`import_log_items` は一切DELETEしない**。
+
+**hard DELETE rollbackの実行可能期間は、PRE-CUTOVERかつ対象医院について`hp_research` /
+`hp_rank_feedback` / `maps_results`等のops業務データがまだ1行も生成されていない期間に限定する。**
+この2条件を両方満たす場合のみ、`imported_batch_id`単位のhard rollbackを許可する。
+
+POST-CUTOVER、またはPRE-CUTOVERでもops業務データ生成後はhard DELETE rollbackを禁止する。
+通常のops FKは`ON DELETE RESTRICT`であり、参照中の医院DELETEはDBが拒否する。これを回避するために
+ops履歴や監査履歴をDELETEして強制rollbackしてはならない。復旧には、previous SQLite backup、
+DB backup / PITR、corrective migration、または`status` / deactivationを使用する。
 
 - 対象は「当該batchで**新規にINSERTされた** `clinic_master.clinics` 行」のみ。
   ```sql
