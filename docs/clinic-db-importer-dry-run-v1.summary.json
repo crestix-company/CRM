@@ -1,0 +1,81 @@
+{
+  "source_protection": {
+    "before": {
+      "sha256": "5b8c37838006545498ec132e09e333dd6200ceccfce09b3b094af75899265c40",
+      "mtime": 1790563202.84435,
+      "size": 1090035712,
+      "clinics_count": 162258,
+      "medical_key_empty": 16,
+      "medical_key_duplicate_groups": 0,
+      "integrity_check": "ok"
+    },
+    "after": {
+      "sha256": "5b8c37838006545498ec132e09e333dd6200ceccfce09b3b094af75899265c40",
+      "mtime": 1790563202.84435,
+      "size": 1090035712,
+      "clinics_count": 162258,
+      "medical_key_empty": 16,
+      "medical_key_duplicate_groups": 0,
+      "integrity_check": "ok"
+    },
+    "identical": true,
+    "diff": []
+  },
+  "normalizer_status": "loaded",
+  "clinics": {
+    "total": 162258,
+    "decisions": {
+      "INSERT": 162242,
+      "REVIEW": 16
+    },
+    "reasons": {
+      "EMPTY_MEDICAL_KEY": 16
+    }
+  },
+  "clinics_fingerprint": "eca8fd6c93aa7ea1b9821d6901c185b13e31844cd1014baa75b99207d106d8d0",
+  "normalizer_mismatch_by_field": {},
+  "legacy_uuid": {
+    "empty": 162237,
+    "non_empty_valid": 21,
+    "invalid": 0,
+    "duplicate_groups": 0
+  },
+  "hp_research": {
+    "total": 814,
+    "decisions": {
+      "INSERT": 814
+    },
+    "reasons": {}
+  },
+  "hp_research_fingerprint": "f8c6672ad9d2556e1068e2256c75986f1e7d8fd3c72b734086e9c95c4ad5daa0",
+  "maps_results": {
+    "total": 15339,
+    "decisions": {
+      "INSERT": 15339
+    },
+    "reasons": {}
+  },
+  "maps_results_fingerprint": "06eaf618177699cc8de6fe135cbb2e61cde52aaf2adb539f141140d0bc06a84b",
+  "maps_synthetic_seed_candidates": 13954,
+  "comdesk": {
+    "total": 22,
+    "decisions": {
+      "original_row:INSERT": 21,
+      "template:INSERT": 1
+    },
+    "reasons": {}
+  },
+  "comdesk_fingerprint": "34cb2f1115f4bffa878b3746f589788afd2882b5386d5786818c54dd086361db",
+  "manual_overrides_legacy_count": 0,
+  "job_cutover": {
+    "running_jobs": 0,
+    "paused_jobs": 1,
+    "completed_jobs": 49,
+    "reset_jobs": 7,
+    "other_job_statuses": {},
+    "pending_items": 202,
+    "running_items": 0,
+    "done_items": 2636,
+    "other_item_states": {}
+  }
+}
