@@ -69,3 +69,17 @@ def test_parse_uuid_invalid():
     value, ok = transform.parse_uuid("not-a-uuid")
     assert ok is False
     assert value is None
+
+
+def test_strip_nul_removes_null_bytes():
+    assert transform.strip_nul("abc\x00def") == "abcdef"
+
+
+def test_to_optional_text_strips_nul():
+    assert transform.to_optional_text("https://example.com/\x00broken") == "https://example.com/broken"
+
+
+def test_sanitize_json_value_strips_nested_nul():
+    value = {"a": "x\x00y", "b": ["p\x00q", 1, None], "c": {"d": "e\x00f"}}
+    sanitized = transform.sanitize_json_value(value)
+    assert sanitized == {"a": "xy", "b": ["pq", 1, None], "c": {"d": "ef"}}

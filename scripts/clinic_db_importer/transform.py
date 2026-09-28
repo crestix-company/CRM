@@ -17,12 +17,38 @@ _UUID_RE = re.compile(
 )
 
 
+def strip_nul(value: str) -> str:
+    """PostgreSQL text/jsonb cannot store the NUL byte (U+0000) under any
+    circumstances -- not even as a valid JSON \\u0000 escape, which Python's
+    json.loads accepts but Postgres's jsonb input function rejects outright
+    ("unsupported Unicode escape sequence"). Found via the full-scale
+    migration rehearsal (docs/clinic-db-migration-rehearsal-v1.md): a scraped
+    URL contained a literal NUL. Stripping (not replacing with a placeholder)
+    matches the general spirit of the other transforms here -- never invent
+    a value, and a mid-string NUL carries no meaningful information anyway.
+    """
+    return value.replace("\x00", "")
+
+
 def to_optional_text(value) -> str | None:
     """SQLite empty-string-as-default -> NULL. Never invents a value."""
     if value is None:
         return None
-    text = str(value).strip()
+    text = strip_nul(str(value)).strip()
     return text if text else None
+
+
+def sanitize_json_value(value):
+    """Recursively strips NUL bytes from every string inside a parsed JSON
+    value, so it can be safely re-serialized into a PostgreSQL jsonb column.
+    """
+    if isinstance(value, str):
+        return strip_nul(value)
+    if isinstance(value, dict):
+        return {k: sanitize_json_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize_json_value(v) for v in value]
+    return value
 
 
 def parse_bool(value) -> tuple[bool | None, bool]:
