@@ -20,11 +20,12 @@ class JobCutoverStatus:
     pending_items: int
     running_items: int
     done_items: int
+    cancelled_items: int
     other_item_states: dict
 
     @property
     def gate_clear(self) -> bool:
-        return self.running_jobs == 0 and self.running_items == 0
+        return self.pending_items == 0 and self.running_items == 0 and self.running_jobs == 0
 
 
 def read_job_cutover_status(conn: sqlite3.Connection) -> JobCutoverStatus:
@@ -32,7 +33,7 @@ def read_job_cutover_status(conn: sqlite3.Connection) -> JobCutoverStatus:
     item_counts = dict(conn.execute("SELECT state, COUNT(*) FROM research_job_items GROUP BY state;").fetchall())
 
     known_job = {"RUNNING", "PAUSED", "COMPLETED", "RESET", "BUDGET"}
-    known_item = {"PENDING", "RUNNING", "DONE"}
+    known_item = {"PENDING", "RUNNING", "DONE", "CANCELLED"}
 
     return JobCutoverStatus(
         running_jobs=job_counts.get("RUNNING", 0),
@@ -43,5 +44,6 @@ def read_job_cutover_status(conn: sqlite3.Connection) -> JobCutoverStatus:
         pending_items=item_counts.get("PENDING", 0),
         running_items=item_counts.get("RUNNING", 0),
         done_items=item_counts.get("DONE", 0),
+        cancelled_items=item_counts.get("CANCELLED", 0),
         other_item_states={k: v for k, v in item_counts.items() if k not in known_item},
     )

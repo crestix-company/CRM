@@ -17,6 +17,9 @@
 - source hashは1 MiB blockでstreaming計算し、1.09 GB SQLiteを一括readしない。
 - Production modeは`--execute`相当、project ref、source fingerprint一致、cutover gate clearを全て要求する。
   現実装のDB transport自体もlocalhost Docker以外を拒否する。
+- source `research_job_items.state`は`PENDING` / `RUNNING` / `DONE` / `CANCELLED`を正式語彙として扱う。
+  legacy jobs/itemsはRUNTIME_ONLYのためtargetへ移行しないが、CANCELLEDはterminal auditとして受理し、
+  worker claim対象にもcutover gateのblocking countにも含めない。
 
 ## Comdesk unresolved contract
 
@@ -34,6 +37,9 @@ REVIEW clinic参照は`MISSING_FK`相当のREVIEWとして自動INSERTしない�
 unit testとDocker integration testでNULL clinicをREVIEWしtargetへ0 INSERTとすることを固定した。
 
 ## Full-scale Scratch result
+
+CANCELLED contract反映後、PostgreSQL 17.11の新規ScratchへProduction SQLiteをread-only sourceとして
+全件再実行した。sourceの`CANCELLED=0`、`PENDING=202`はhistorical repair前baselineどおり。
 
 Source fingerprint before/after:
 
@@ -63,6 +69,13 @@ Target:
 | FK orphan / UUIDv7 mismatch / duplicate target key | 0 |
 | duplicate completed source marker | 0 |
 
+追加整合性検証: bad UUIDv7 0、HP/Maps/Comdesk FK orphan 0、medical_key duplicate group 0、
+legacy_uuid duplicate group 0。field mismatch/reviewは既知の`EMPTY_MEDICAL_KEY` 16件のみ。
+target `research_jobs`/`research_job_items`はRUNTIME_ONLY契約どおり0件。
+
+CANCELLEDありfixtureではgate PASS、通常clinic migration完了、target job/item 0件を確認した。
+同じfixtureを2回resumeして全data phase `chunks_processed=0`、target件数不変だった。
+
 ## Failure and resume
 
 chunk size 1,000でclinicsの4番目chunk (source id 3001–4000)をtarget column renameにより強制失敗した。
@@ -74,6 +87,8 @@ resume cursorは3000、completed=3、failed=1、target clinics=2,984、audit=3,0
 
 - chunk size: 1,000
 - resume full-scale elapsed: 141.23 seconds
+- CANCELLED contract fresh full-scale elapsed: 82.35 seconds
+- CANCELLED contract fresh full-scale max RSS: 127,827,968 bytes
 - clinics throughput: 約1,149 source rows/sec (`162,258 / 141.23`)
 - peak RSS: 121,520,128 bytes (約115.9 MiB、`/usr/bin/time -l`)
 - streaming hash修正前の1.09 GB一括read peak RSS 1,108,033,536 bytesは解消した。
@@ -81,6 +96,7 @@ resume cursorは3000、completed=3、failed=1、target clinics=2,984、audit=3,0
 ## Cutover and production protection
 
 - `research_job_items`: PENDING 202 / RUNNING 0
+- `research_job_items`: CANCELLED 0（historical repair前baseline）
 - `research_jobs`: RUNNING 0
 - cutover gate: **BLOCK**
 - Production Supabase DDL/DML: 0/0（接続・migrationとも未実行）
@@ -89,3 +105,4 @@ resume cursorは3000、completed=3、failed=1、target clinics=2,984、audit=3,0
 - PII committed: 0（件数・fingerprint・設計結果のみ）
 
 PENDING 202が解消され、worker停止・lock解放・結果反映を再確認するまでProduction executionは許可しない。
+gate条件は`PENDING=0 AND RUNNING items=0 AND RUNNING jobs=0`であり、CANCELLEDはblockしない。

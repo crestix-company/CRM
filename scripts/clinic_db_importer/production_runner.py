@@ -105,7 +105,7 @@ class CutoverGateResult:
 
     @property
     def passed(self) -> bool:
-        return self.pending_items == 0 and self.running_items == 0
+        return self.pending_items == 0 and self.running_items == 0 and self.running_jobs == 0
 
 
 def check_cutover_gate(conn: sqlite3.Connection) -> CutoverGateResult:

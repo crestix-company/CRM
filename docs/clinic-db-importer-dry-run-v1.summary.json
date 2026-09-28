@@ -76,6 +76,7 @@
     "pending_items": 202,
     "running_items": 0,
     "done_items": 2636,
+    "cancelled_items": 0,
     "other_item_states": {}
   }
 }

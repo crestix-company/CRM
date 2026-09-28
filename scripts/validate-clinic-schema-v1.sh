@@ -157,7 +157,7 @@ psql_exec <<'SQL' >/tmp/validate_job.log 2>&1 || true
 INSERT INTO clinic_ops.research_jobs (id, kind, options, status, max_searches)
 VALUES ('00000000-0000-4000-9000-0000000000aa','hp','{}','PAUSED',100);
 SQL
-for v in PENDING RUNNING DONE; do
+for v in PENDING RUNNING DONE CANCELLED; do
   expect_pass "research_job_items.state $v" "INSERT INTO clinic_ops.research_job_items (job_id, clinic_id, state) VALUES ('00000000-0000-4000-9000-0000000000aa','00000000-0000-7000-8000-000000000001','$v');"
 done
 for v in ERROR SKIPPED; do
@@ -284,6 +284,21 @@ AFTER_ROW_COUNT=$(psql_query -c "SELECT count(*) FROM clinic_ops.import_log_item
 AFTER_CLINIC_ID=$(psql_query -c "SELECT COALESCE(clinic_id::text,'NULL') FROM clinic_ops.import_log_items WHERE batch_id='00000000-0000-4000-9000-0000000000bb';")
 echo "after rollback DELETE: import_log_items row_count=$AFTER_ROW_COUNT clinic_id=$AFTER_CLINIC_ID (expect 1 row retained, clinic_id=NULL)"
 [[ "$AFTER_ROW_COUNT" == "1" && "$AFTER_CLINIC_ID" == "NULL" ]] && { PASS=$((PASS+1)); } || { FAIL=$((FAIL+1)); FAILURES+=("import_log_items SET NULL on rollback got count=$AFTER_ROW_COUNT clinic_id=$AFTER_CLINIC_ID"); }
+
+echo ""
+echo "== Upgrade behavior: old 3-state constraint -> CANCELLED contract =="
+psql_exec <<'SQL' >/tmp/validate_cancelled_upgrade.log 2>&1
+ALTER TABLE clinic_ops.research_job_items DROP CONSTRAINT chk_research_job_items_state;
+ALTER TABLE clinic_ops.research_job_items ADD CONSTRAINT chk_research_job_items_state
+  CHECK (state IN ('PENDING', 'RUNNING', 'DONE'));
+SQL
+if cat "$SQL_DIR/005_create_clinic_ops_extended.sql" | psql_exec >/tmp/validate_cancelled_reapply.log 2>&1; then
+  expect_pass "re-apply upgrades old state constraint for CANCELLED" "INSERT INTO clinic_ops.research_job_items (job_id, clinic_id, state) VALUES ('00000000-0000-4000-9000-0000000000aa','00000000-0000-7000-8000-000000000001','CANCELLED');"
+else
+  echo "FAIL (old constraint upgrade failed)"
+  cat /tmp/validate_cancelled_reapply.log
+  FAIL=$((FAIL+1)); FAILURES+=("old state constraint upgrade")
+fi
 
 echo ""
 echo "== Idempotency: re-apply all DDL files =="

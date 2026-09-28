@@ -335,12 +335,14 @@ Production実装では`docs/clinic-db-migration-plan.md` STEP[10]で既に設計
 | RUNNING jobs | 0 |
 | RUNNING items | 0 |
 | PENDING items | **202** |
+| CANCELLED items | 0（historical repair前） |
 
 `docs/clinic-db-importer-dry-run-v1.md`修正後の表現を踏襲する: **RUNNING activity gateはclear**
 (`RUNNING jobs=0`かつ`RUNNING items=0`)。しかし`docs/clinic-db-review-resolution.md` 5節の
 full cutover条件(`research_job_items.state IN ('PENDING','RUNNING') = 0`)は
 **PENDING items 202件が残るため未達**。今回もこの202件を変更・削除・処理していない
 (read-only再確認のみ)。
+`CANCELLED`はterminal stateであり、repair後もPENDING/RUNNING countには含めずgateをblockしない。
 
 ---
 

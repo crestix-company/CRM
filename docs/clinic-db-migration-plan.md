@@ -214,6 +214,10 @@ Schema v1で追加したtable(`manual_override_events` / `comdesk_templates` / `
 正とする(このファイルの一覧は162,258件移行に直接関わるcore tableのみに限定している)。
 | `clinic_ops.import_log_items` | btree (`clinic_id`) | FK・突合用(NULL許容のためpartial可) |
 
+`research_job_items.state='CANCELLED'`は正式なterminal vocabularyとしてsource auditで受理するが、
+legacy job/job item自体は従来どおり`RUNTIME_ONLY`でtargetへ移行しない。cutover gateは
+`PENDING=0 AND RUNNING items=0 AND RUNNING jobs=0`のままとし、CANCELLEDはblockしない。
+
 **見送り候補(過剰indexとして除外、要件が明確になったら追加検討)**:
 - `phone` への単独index — `phone_norm`/`tel_match_key`(Schema v1で追加、`docs/clinic-db-schema-v1.md`
   2.4節)で代替できるため、raw `phone`列への単独indexは見送る。`website`は`clinic_master.clinics`に

@@ -239,6 +239,7 @@ confirmed website保護ruleに必要な情報(`maps_status`, `maps_website_url`,
 | PENDING items | 202 |
 | RUNNING items | **0** |
 | DONE items | 2,636 |
+| CANCELLED items | 0 |
 
 `docs/clinic-db-review-resolution.md` 5節のfull cutover gate条件は
 `research_job_items.state IN ('PENDING','RUNNING') = 0`(`RUNNING jobs = 0`も併せて)であり、
