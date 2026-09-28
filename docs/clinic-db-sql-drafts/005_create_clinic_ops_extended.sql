@@ -90,31 +90,35 @@ CREATE INDEX IF NOT EXISTS idx_comdesk_original_rows_clinic
 -- ============================================================
 -- legacy in-flight job/job itemは移行しない(docs/clinic-db-review-resolution.md 5節のcutover gate:
 -- RUNNING jobs=0、PENDING/RUNNING items=0、worker停止、lock解放、完了結果反映済みを確認してから
--- 新runtimeを空の状態で開始する)。status/state語彙は暫定値であり、Clinic Lead実装(jobs.py)の
--- 実際の遷移を最終確認してからこのCHECKを固定する(要確認)。
+-- 新runtimeを空の状態で開始する)。status/state/kind語彙はコード確定
+-- (docs/clinic-db-runtime-vocab-v1.md「Jobs」節、src/master/jobs.py・src/master/store.pyを全網羅)。
 CREATE TABLE IF NOT EXISTS clinic_ops.research_jobs (
   id             uuid        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,  -- row surrogate key、Identity設計の対象外
   kind           text        NOT NULL,
   options        jsonb       NULL,
-  status         text        NOT NULL,
+  status         text        NOT NULL DEFAULT 'PAUSED',  -- legacy schema defaultと一致(store.py:90)
   max_searches   int         NULL,
   search_count   int         NOT NULL DEFAULT 0,
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
 
-  -- 要確認: 暫定vocab。jobs.py実装確認後に確定する。
+  CONSTRAINT chk_research_jobs_kind
+    CHECK (kind IN ('hp', 'epark', 'media')),
   CONSTRAINT chk_research_jobs_status
-    CHECK (status IN ('PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED'))
+    CHECK (status IN ('PAUSED', 'RUNNING', 'COMPLETED', 'RESET', 'BUDGET'))
 );
 CREATE INDEX IF NOT EXISTS idx_research_jobs_status ON clinic_ops.research_jobs (status);
 
 CREATE TABLE IF NOT EXISTS clinic_ops.research_job_items (
   job_id         uuid        NOT NULL,
   clinic_id      uuid        NOT NULL,
-  state          text        NOT NULL,
-  result         text        NULL,
+  state          text        NOT NULL DEFAULT 'PENDING',  -- legacy schema defaultと一致(store.py:94)
+  result         text        NULL,   -- state='DONE'時の結果。research_status語彙(SUCCESS/REVIEW/ERROR/NOT_FOUND、
+                                      -- kindがepark/mediaの場合はそれぞれの値域)と対応。ここではCHECKで縛らない
+                                      -- (kind別に許容語彙が異なるため、アプリ側で整合性を保証する)
   note           text        NULL,
-  lease_until    timestamptz NULL,   -- current workerでは未使用。将来claim方式導入時のみ利用(要確認)
+  lease_until    timestamptz NULL,   -- current workerでは未使用(claimはSQLite側threading.Lock+BEGIN IMMEDIATEで
+                                      -- 実現。Postgres複数worker対応時のみ将来利用、要実装)
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
 
@@ -123,9 +127,10 @@ CREATE TABLE IF NOT EXISTS clinic_ops.research_job_items (
     FOREIGN KEY (job_id) REFERENCES clinic_ops.research_jobs (id) ON DELETE RESTRICT,
   CONSTRAINT fk_research_job_items_clinic
     FOREIGN KEY (clinic_id) REFERENCES clinic_master.clinics (clinic_id) ON DELETE RESTRICT,
-  -- 要確認: 暫定vocab。jobs.py実装確認後に確定する。
+  -- state は PENDING/RUNNING/DONE の3値のみ(ERROR/SKIPPEDという状態は存在しない。
+  -- 成否はDONE時のresult列で表現される。docs/clinic-db-runtime-vocab-v1.md参照)。
   CONSTRAINT chk_research_job_items_state
-    CHECK (state IN ('PENDING', 'RUNNING', 'DONE', 'ERROR', 'SKIPPED'))
+    CHECK (state IN ('PENDING', 'RUNNING', 'DONE'))
 );
 CREATE INDEX IF NOT EXISTS idx_research_job_items_job_state
   ON clinic_ops.research_job_items (job_id, state);

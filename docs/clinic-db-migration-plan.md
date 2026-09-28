@@ -85,6 +85,13 @@ UUID形式でない値)を洗い出す。
 (Shift-JIS等)関連の問題が扱われていた実績があるため(`iconv-lite` 依存、`LEGACY_EXCEL_IMPORT_ENABLED`等)、
 **文字コード起因の文字化けは重点チェック項目とする**。
 
+**normalizer列の検証(コード確定、`docs/clinic-db-runtime-vocab-v1.md`「Normalizer contract」節)**:
+`name_norm`/`name_prefix`/`phone_norm`/`tel_match_key`/`address_norm`はSQLiteの値をCOPYせず、
+Clinic Lead既存の`src.normalizer.*`関数をそのまま呼び出して`clinic_name`/`phone`/`address`から
+**再生成**する。162,258件全件について再生成値とSQLite保存値を比較し、不一致行はREVIEWへ回す
+(自動INSERTしない)。同一関数・同一入力であれば本来100%一致するはずであり、不一致はlegacy側の
+データdrift(rawカラム編集後にnormalize列が再計算されていない等)を示す。
+
 ### [9] promotion(staging → production)
 
 `medical_key` を基準に3分岐。**UUIDv7の生成責任は常にPython側**であり、DBは値を受け取るだけ
