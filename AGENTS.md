@@ -15,6 +15,15 @@ This is a Next.js / Prisma / PostgreSQL CRM. Keep tenant isolation by always der
 - Do not import spreadsheet totals, averages, rates, or ideal progress as facts.
 - Legacy workbook import must run dry-run before any apply step.
 
+## ID Policy
+
+- Existing primary keys remain unchanged unless a separate migration is explicitly approved.
+- All new CRM tables and new CRM domains must use UUIDv7 primary keys.
+- Generate UUIDv7 in the application with `src/lib/server/uuidv7.ts`; do not use Prisma `@default(uuid())` on new models.
+- Treat `created_at` / `createdAt` as the source of truth for chronology, sorting, reporting, and audits.
+- Do not infer business dates from UUIDv7 timestamps.
+- See `docs/uuidv7-id-policy.md`.
+
 ## Commands
 
 ```bash
