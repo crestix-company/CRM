@@ -60,6 +60,13 @@ export function AppHeader({
             </Link>
           ) : null}
           <Link
+            href="/approvals"
+            aria-label="承認"
+            className="hidden h-10 items-center rounded-lg border border-line bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:border-brand-200 hover:text-brand-700 sm:inline-flex"
+          >
+            承認
+          </Link>
+          <Link
             href="/notifications"
             aria-label="通知"
             className="relative grid h-10 w-10 place-items-center rounded-lg border border-line bg-white text-slate-600 shadow-sm transition hover:border-brand-200 hover:text-brand-700"

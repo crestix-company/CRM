@@ -26,6 +26,7 @@ const primaryNavigation = [
     activePrefixes: ["/delivery-projects"],
   },
   { href: "/tasks", label: "タスク", icon: "tasks" },
+  { href: "/approvals", label: "承認", icon: "tasks" },
 ] as const;
 
 const managementNavigation = [
@@ -48,7 +49,7 @@ export function Sidebar({
         <span className="grid h-9 w-9 place-items-center rounded-lg bg-brand-600 shadow-sm">
           S
         </span>
-        SalesNest
+        Crestix AIOS
       </div>
       <nav className="flex-1 px-3 py-5">
         <div className="space-y-1">
@@ -119,7 +120,7 @@ export function Sidebar({
       <div className="m-4 rounded-lg border border-white/10 bg-white/[0.04] p-4">
         <p className="text-xs font-bold text-brand-500">SALESNEST CORE</p>
         <p className="mt-2 text-sm leading-6 text-white/60">
-          会社 → 商談 → CS案件を一つの流れで管理します。
+          今日の実行・承認・顧客・案件を一つの業務体験で管理します。
         </p>
       </div>
     </aside>
