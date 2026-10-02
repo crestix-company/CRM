@@ -18,6 +18,7 @@ function requesterReview(): ApprovalPolicy["steps"][number] {
 const policies: Record<ApprovalType, ApprovalPolicy> = {
   AMOUNT_CHANGE: {
     priority: ApprovalPriority.URGENT,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       {
         kind: ApprovalStepKind.REVIEW,
@@ -31,6 +32,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   DISCOUNT: {
     priority: ApprovalPriority.URGENT,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       {
         kind: ApprovalStepKind.REVIEW,
@@ -44,6 +46,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   CONTRACT_SEND: {
     priority: ApprovalPriority.URGENT,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       requesterReview(),
       {
@@ -58,6 +61,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   CUSTOMER_MINUTES_SEND: {
     priority: ApprovalPriority.IMPORTANT,
+    escalationRoleKey: ApprovalRoleKey.FS_MANAGER,
     steps: [
       {
         kind: ApprovalStepKind.APPROVE,
@@ -67,6 +71,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   CS_PLAN: {
     priority: ApprovalPriority.IMPORTANT,
+    escalationRoleKey: ApprovalRoleKey.FS_MANAGER,
     steps: [
       requesterReview(),
       {
@@ -77,6 +82,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   CROSS_SELL: {
     priority: ApprovalPriority.IMPORTANT,
+    escalationRoleKey: ApprovalRoleKey.FS_MANAGER,
     steps: [
       requesterReview(),
       {
@@ -105,6 +111,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   ADMIN_SETTING: {
     priority: ApprovalPriority.NORMAL,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       {
         kind: ApprovalStepKind.REVIEW,
@@ -118,6 +125,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   COMPANY_PRIORITY: {
     priority: ApprovalPriority.IMPORTANT,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       {
         kind: ApprovalStepKind.APPROVE,
@@ -127,6 +135,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   SYSTEM_IMPORTANT_CHANGE: {
     priority: ApprovalPriority.IMPORTANT,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       {
         kind: ApprovalStepKind.REVIEW,
@@ -140,6 +149,7 @@ const policies: Record<ApprovalType, ApprovalPolicy> = {
   },
   HR_MAJOR: {
     priority: ApprovalPriority.IMPORTANT,
+    escalationRoleKey: ApprovalRoleKey.EXECUTIVE_FINAL,
     steps: [
       {
         kind: ApprovalStepKind.APPROVE,
