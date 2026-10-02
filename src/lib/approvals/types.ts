@@ -29,6 +29,7 @@ export type ApprovalStepTemplate = {
 
 export type ApprovalPolicy = {
   priority: ApprovalPriority;
+  escalationRoleKey?: string;
   steps: ApprovalStepTemplate[];
 };
 
