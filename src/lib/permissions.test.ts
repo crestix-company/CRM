@@ -34,4 +34,18 @@ describe("role permissions", () => {
     expect(hasPermission("READ_ONLY", Permission.CRM_READ)).toBe(true);
     expect(hasPermission("READ_ONLY", Permission.CRM_WRITE)).toBe(false);
   });
+  it("adds Stage3 read visibility without granting sensitive final actions", () => {
+    expect(hasPermission("READ_ONLY", Permission.READ_HOSPITAL_PROFILE)).toBe(
+      true,
+    );
+    expect(hasPermission("READ_ONLY", Permission.READ_APPROVAL)).toBe(true);
+    expect(hasPermission("MANAGER", Permission.REVIEW_APPROVAL)).toBe(true);
+    expect(hasPermission("MANAGER", Permission.MANAGE_APPROVAL)).toBe(false);
+    expect(hasPermission("ADMIN", Permission.DOWNLOAD_CONTRACT_PDF)).toBe(false);
+    expect(hasPermission("ADMIN", Permission.APPROVE_SYSTEM_CHANGE)).toBe(false);
+    expect(
+      hasPermission("SUPER_ADMIN", Permission.DOWNLOAD_CONTRACT_PDF),
+    ).toBe(true);
+  });
+
 });
