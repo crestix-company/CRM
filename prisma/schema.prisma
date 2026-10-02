@@ -552,6 +552,14 @@ enum OperationalEventType {
   EXTERNAL_CHANGE_DETECTED   @map("external_change_detected")
   ROUND_ROBIN_ASSIGNED       @map("round_robin_assigned")
   ASSIGNMENT_FAILED          @map("assignment_failed")
+  APPROVAL_REQUESTED         @map("approval_requested")
+  APPROVAL_REVIEWED          @map("approval_reviewed")
+  APPROVAL_APPROVED          @map("approval_approved")
+  APPROVAL_REJECTED          @map("approval_rejected")
+  APPROVAL_RETURNED          @map("approval_returned")
+  APPROVAL_ESCALATED         @map("approval_escalated")
+  APPROVAL_EXECUTED          @map("approval_executed")
+  APPROVAL_EXECUTION_FAILED  @map("approval_execution_failed")
 
   @@map("operational_event_type")
 }
