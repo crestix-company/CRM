@@ -16,11 +16,11 @@ export function generateUuidV7(nowMs: number = Date.now()): string {
   }
 
   const bytes = randomBytes(16);
-  let timestamp = BigInt(nowMs);
+  let timestamp = nowMs;
 
   for (let index = 5; index >= 0; index -= 1) {
-    bytes[index] = Number(timestamp & 0xffn);
-    timestamp >>= 8n;
+    bytes[index] = timestamp % 256;
+    timestamp = Math.floor(timestamp / 256);
   }
 
   bytes[6] = (bytes[6] & 0x0f) | 0x70;
