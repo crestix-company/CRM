@@ -62,9 +62,7 @@ const rolePermissions: Record<OrganizationRole, ReadonlySet<Permission>> = {
     Permission.DELEGATE_APPROVAL,
     Permission.MANAGE_APPROVAL,
     Permission.VIEW_CONTRACT_PDF,
-    Permission.DOWNLOAD_CONTRACT_PDF,
     Permission.PROPOSE_SYSTEM_CHANGE,
-    Permission.APPROVE_SYSTEM_CHANGE,
   ]),
   MANAGER: new Set([
     Permission.CRM_READ,
