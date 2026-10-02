@@ -2,6 +2,7 @@ import { OrgNodeStatus, PermissionOverrideEffect } from "@prisma/client";
 import type { AuthContext } from "./auth";
 import {
   AuthorizationError,
+  Permission as PermissionCatalog,
   type Permission,
   permissionsForRole,
 } from "./permissions";
@@ -19,10 +20,13 @@ export type EffectiveAccess = {
   primaryOrgNodeId: string | null;
   legacyOrganizationWideScope: boolean;
   scopedOverrides: readonly ScopedOverride[];
+  orgNodes: readonly { id: string; parentId: string | null }[];
 };
 
+const permissionValues = new Set<string>(Object.values(PermissionCatalog));
+
 function isPermission(value: string): value is Permission {
-  return typeof value === "string";
+  return permissionValues.has(value);
 }
 
 function permissionsFromJson(value: unknown): Permission[] {
@@ -129,7 +133,25 @@ export async function getEffectiveAccess(
       memberships.find((membership) => membership.isPrimary)?.orgNodeId ?? null,
     legacyOrganizationWideScope,
     scopedOverrides: overrides,
+    orgNodes: nodes,
   };
+}
+
+function isSameOrDescendant(
+  access: EffectiveAccess,
+  ancestorId: string,
+  nodeId: string,
+) {
+  if (ancestorId === nodeId) return true;
+  const parentById = new Map(
+    access.orgNodes.map((node) => [node.id, node.parentId] as const),
+  );
+  let current = parentById.get(nodeId) ?? null;
+  while (current) {
+    if (current === ancestorId) return true;
+    current = parentById.get(current) ?? null;
+  }
+  return false;
 }
 
 function scopedOverrideFor(
@@ -139,7 +161,9 @@ function scopedOverrideFor(
 ) {
   return access.scopedOverrides.filter(
     (override) =>
-      override.permission === permission && override.orgNodeId === orgNodeId,
+      override.permission === permission &&
+      override.orgNodeId &&
+      isSameOrDescendant(access, override.orgNodeId, orgNodeId),
   );
 }
 
