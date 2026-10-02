@@ -40,6 +40,82 @@ enum WorkFunction {
   @@map("work_function")
 }
 
+
+enum OrgNodeType {
+  BUSINESS   @map("business")
+  DEPARTMENT @map("department")
+  TEAM       @map("team")
+
+  @@map("org_node_type")
+}
+
+enum OrgNodeStatus {
+  ACTIVE   @map("active")
+  INACTIVE @map("inactive")
+
+  @@map("org_node_status")
+}
+
+enum PermissionOverrideEffect {
+  ALLOW @map("allow")
+  DENY  @map("deny")
+
+  @@map("permission_override_effect")
+}
+
+enum ApprovalPriority {
+  URGENT    @map("urgent")
+  IMPORTANT @map("important")
+  NORMAL    @map("normal")
+
+  @@map("approval_priority")
+}
+
+enum ApprovalStatus {
+  DRAFT            @map("draft")
+  PENDING          @map("pending")
+  APPROVED         @map("approved")
+  REJECTED         @map("rejected")
+  RETURNED         @map("returned")
+  CANCELED         @map("canceled")
+  EXPIRED          @map("expired")
+  EXECUTION_FAILED @map("execution_failed")
+
+  @@map("approval_status")
+}
+
+enum ApprovalStepKind {
+  REVIEW  @map("review")
+  APPROVE @map("approve")
+
+  @@map("approval_step_kind")
+}
+
+enum ApprovalStepStatus {
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+  RETURNED @map("returned")
+  SKIPPED  @map("skipped")
+
+  @@map("approval_step_status")
+}
+
+enum ApprovalActionType {
+  SUBMIT         @map("submit")
+  COMMENT        @map("comment")
+  APPROVE        @map("approve")
+  REJECT         @map("reject")
+  RETURN         @map("return")
+  DELEGATE       @map("delegate")
+  ESCALATE       @map("escalate")
+  EXPIRE         @map("expire")
+  EXECUTE        @map("execute")
+  EXECUTION_FAIL @map("execution_fail")
+
+  @@map("approval_action_type")
+}
+
 enum StageType {
   OPEN @map("open")
   WON  @map("won")
@@ -793,6 +869,16 @@ model User {
   auditLogs               AuditLog[]
   savedViews              SavedView[]
   businessUnitMemberships BusinessUnitMembership[]
+  orgNodeMemberships       OrgNodeMembership[]
+  permissionOverrides      UserPermissionOverride[] @relation("PermissionOverrideUser")
+  createdPermissionOverrides UserPermissionOverride[] @relation("PermissionOverrideCreator")
+  requestedApprovals       ApprovalRequest[] @relation("ApprovalRequester")
+  assignedApprovalSteps    ApprovalStep[] @relation("ApprovalStepAssignee")
+  actedApprovalSteps       ApprovalStep[] @relation("ApprovalStepActor")
+  approvalActions          ApprovalAction[] @relation("ApprovalActionActor")
+  delegationsFrom          ApprovalDelegation[] @relation("ApprovalDelegationFrom")
+  delegationsTo            ApprovalDelegation[] @relation("ApprovalDelegationTo")
+  createdDelegations       ApprovalDelegation[] @relation("ApprovalDelegationCreator")
 }
 
 model Organization {
@@ -853,6 +939,17 @@ model Organization {
   outboundCampaigns          OutboundCampaign[]
   callLists                  CallList[]
   appointmentCaptureLinks    AppointmentCaptureLink[]
+  orgNodes                   OrgNode[]
+  roleDefinitions            RoleDefinition[]
+  orgNodeMemberships         OrgNodeMembership[]
+  permissionOverrides        UserPermissionOverride[]
+  corporateGroups            CorporateGroup[]
+  hospitalProfiles           HospitalProfile[]
+  approvalSlaPolicies        ApprovalSlaPolicy[]
+  approvalRequests           ApprovalRequest[]
+  approvalSteps              ApprovalStep[]
+  approvalActions            ApprovalAction[]
+  approvalDelegations        ApprovalDelegation[]
 }
 
 model OrganizationMember {
@@ -1030,7 +1127,8 @@ model Company {
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner        User?        @relation("CompanyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  owner           User?            @relation("CompanyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  hospitalProfile HospitalProfile?
 
   @@unique([organizationId, domain])
   @@index([organizationId, deletedAt, updatedAt])
@@ -1893,15 +1991,279 @@ model AuditLog {
   before         Json?    @db.JsonB
   after          Json?    @db.JsonB
   ipAddress      String?  @map("ip_address") @db.VarChar(64)
-  userAgent      String?  @map("user_agent")
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  userAgent         String?  @map("user_agent")
+  correlationId     String?  @map("correlation_id") @db.VarChar(120)
+  approvalRequestId String?  @map("approval_request_id") @db.Uuid
+  sourceType        String?  @map("source_type") @db.VarChar(40)
+  sourceId          String?  @map("source_id") @db.VarChar(160)
+  reason            String?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  actor        User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor           User?           @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  approvalRequest ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([organizationId, targetType, targetId])
+  @@index([organizationId, approvalRequestId, createdAt])
+  @@index([organizationId, correlationId])
   @@map("audit_logs")
+}
+
+
+model OrgNode {
+  id             String        @id @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  parentId       String?       @map("parent_id") @db.Uuid
+  type           OrgNodeType
+  name           String        @db.VarChar(160)
+  status         OrgNodeStatus @default(ACTIVE)
+  displayOrder   Int           @default(0) @map("display_order")
+  metadata       Json          @default("{}") @db.JsonB
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent        OrgNode?                 @relation("OrgNodeTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children      OrgNode[]                @relation("OrgNodeTree")
+  memberships   OrgNodeMembership[]
+  overrides     UserPermissionOverride[]
+  approvalSteps ApprovalStep[]
+
+  @@index([organizationId, parentId, status, displayOrder])
+  @@map("org_nodes")
+}
+
+model RoleDefinition {
+  id              String   @id @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  key             String   @db.VarChar(80)
+  name            String   @db.VarChar(120)
+  level           Int      @default(0)
+  permissions     Json     @default("[]") @db.JsonB
+  aggregationRule Json?    @map("aggregation_rule") @db.JsonB
+  isSystem        Boolean  @default(false) @map("is_system")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  OrgNodeMembership[]
+
+  @@unique([organizationId, key])
+  @@map("role_definitions")
+}
+
+model OrgNodeMembership {
+  id               String    @id @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  orgNodeId        String    @map("org_node_id") @db.Uuid
+  roleDefinitionId String?   @map("role_definition_id") @db.Uuid
+  isPrimary        Boolean   @default(false) @map("is_primary")
+  validFrom        DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo          DateTime? @map("valid_to") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orgNode        OrgNode         @relation(fields: [orgNodeId], references: [id], onDelete: Cascade)
+  roleDefinition RoleDefinition? @relation(fields: [roleDefinitionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, userId, validTo])
+  @@index([organizationId, orgNodeId, validTo])
+  @@map("org_node_memberships")
+}
+
+model UserPermissionOverride {
+  id              String                   @id @db.Uuid
+  organizationId  String                   @map("organization_id") @db.Uuid
+  userId          String                   @map("user_id") @db.Uuid
+  permission      String                   @db.VarChar(120)
+  effect          PermissionOverrideEffect
+  orgNodeId       String?                  @map("org_node_id") @db.Uuid
+  reason          String?
+  validFrom       DateTime                 @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo         DateTime?                @map("valid_to") @db.Timestamptz(3)
+  createdByUserId String?                  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("PermissionOverrideUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("PermissionOverrideCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  orgNode      OrgNode?     @relation(fields: [orgNodeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, permission, validTo])
+  @@map("user_permission_overrides")
+}
+
+model CorporateGroup {
+  id             String   @id @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  normalizedName String?  @map("normalized_name") @db.VarChar(200)
+  metadata       Json     @default("{}") @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hospitals    HospitalProfile[]
+
+  @@index([organizationId, name])
+  @@map("corporate_groups")
+}
+
+model HospitalProfile {
+  id               String   @id @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  companyId        String   @unique @map("company_id") @db.Uuid
+  corporateGroupId String?  @map("corporate_group_id") @db.Uuid
+  specialty        String?  @db.VarChar(200)
+  directorName     String?  @map("director_name") @db.VarChar(160)
+  tradeArea        Json?    @map("trade_area") @db.JsonB
+  urls             Json     @default("{}") @db.JsonB
+  currentState     Json     @default("{}") @map("current_state") @db.JsonB
+  metadata         Json     @default("{}") @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  corporateGroup CorporateGroup? @relation(fields: [corporateGroupId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, corporateGroupId])
+  @@map("hospital_profiles")
+}
+
+model ApprovalSlaPolicy {
+  id                String           @id @db.Uuid
+  organizationId    String           @map("organization_id") @db.Uuid
+  priority          ApprovalPriority
+  reminderMinutes   Int?             @map("reminder_minutes")
+  escalationMode    String           @map("escalation_mode") @db.VarChar(40)
+  escalationMinutes Int?             @map("escalation_minutes")
+  cutoffHour        Int?             @map("cutoff_hour")
+  cutoffMinute      Int?             @default(0) @map("cutoff_minute")
+  timezone          String           @default("Asia/Tokyo") @db.VarChar(80)
+  enabled           Boolean          @default(true)
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, priority])
+  @@map("approval_sla_policies")
+}
+
+model ApprovalRequest {
+  id                      String           @id @db.Uuid
+  organizationId          String           @map("organization_id") @db.Uuid
+  type                    String           @db.VarChar(80)
+  targetType              String           @map("target_type") @db.VarChar(80)
+  targetId                String?          @map("target_id") @db.Uuid
+  requestedByUserId       String?          @map("requested_by_user_id") @db.Uuid
+  requestedByAgentType    String?          @map("requested_by_agent_type") @db.VarChar(120)
+  priority                ApprovalPriority
+  riskLevel               String?          @map("risk_level") @db.VarChar(40)
+  amount                  Decimal?         @db.Decimal(18, 2)
+  amountDelta             Decimal?         @map("amount_delta") @db.Decimal(18, 2)
+  reason                  String?
+  beforeSnapshot          Json?            @map("before_snapshot") @db.JsonB
+  proposedSnapshot        Json?            @map("proposed_snapshot") @db.JsonB
+  expectedTargetUpdatedAt DateTime?        @map("expected_target_updated_at") @db.Timestamptz(3)
+  status                  ApprovalStatus   @default(PENDING)
+  remindedAt              DateTime?        @map("reminded_at") @db.Timestamptz(3)
+  escalatedAt             DateTime?        @map("escalated_at") @db.Timestamptz(3)
+  correlationId           String?          @map("correlation_id") @db.VarChar(120)
+  idempotencyKey          String?          @map("idempotency_key") @db.VarChar(200)
+  executedAt              DateTime?        @map("executed_at") @db.Timestamptz(3)
+  executionStatus         String?          @map("execution_status") @db.VarChar(80)
+  executionError          String?          @map("execution_error")
+  createdAt               DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User?            @relation("ApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  steps        ApprovalStep[]
+  actions      ApprovalAction[]
+  auditLogs    AuditLog[]
+
+  @@index([organizationId, status, priority, createdAt])
+  @@index([organizationId, targetType, targetId])
+  @@index([organizationId, correlationId])
+  @@map("approval_requests")
+}
+
+model ApprovalStep {
+  id                String             @id @db.Uuid
+  organizationId    String             @map("organization_id") @db.Uuid
+  approvalRequestId String             @map("approval_request_id") @db.Uuid
+  stepOrder         Int                @map("step_order")
+  kind              ApprovalStepKind
+  status            ApprovalStepStatus @default(PENDING)
+  assignedUserId    String?            @map("assigned_user_id") @db.Uuid
+  assignedRoleKey   String?            @map("assigned_role_key") @db.VarChar(80)
+  assignedOrgNodeId String?            @map("assigned_org_node_id") @db.Uuid
+  anyOneGroupKey    String?            @map("any_one_group_key") @db.VarChar(80)
+  actedByUserId     String?            @map("acted_by_user_id") @db.Uuid
+  actedAt           DateTime?          @map("acted_at") @db.Timestamptz(3)
+  dueAt             DateTime?          @map("due_at") @db.Timestamptz(3)
+  metadata          Json               @default("{}") @db.JsonB
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  assignedUser User?           @relation("ApprovalStepAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  actedBy      User?           @relation("ApprovalStepActor", fields: [actedByUserId], references: [id], onDelete: SetNull)
+  orgNode      OrgNode?        @relation(fields: [assignedOrgNodeId], references: [id], onDelete: SetNull)
+  actions      ApprovalAction[]
+
+  @@unique([approvalRequestId, stepOrder])
+  @@index([organizationId, status, assignedUserId, dueAt])
+  @@index([organizationId, approvalRequestId, stepOrder])
+  @@map("approval_steps")
+}
+
+model ApprovalAction {
+  id                String             @id @db.Uuid
+  organizationId    String             @map("organization_id") @db.Uuid
+  approvalRequestId String             @map("approval_request_id") @db.Uuid
+  approvalStepId    String?            @map("approval_step_id") @db.Uuid
+  actorUserId       String?            @map("actor_user_id") @db.Uuid
+  action            ApprovalActionType
+  comment           String?
+  metadata          Json               @default("{}") @db.JsonB
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  step         ApprovalStep?   @relation(fields: [approvalStepId], references: [id], onDelete: SetNull)
+  actor        User?           @relation("ApprovalActionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, approvalRequestId, createdAt])
+  @@map("approval_actions")
+}
+
+model ApprovalDelegation {
+  id              String    @id @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  fromUserId      String    @map("from_user_id") @db.Uuid
+  toUserId        String    @map("to_user_id") @db.Uuid
+  approvalTypes   Json      @default("[]") @map("approval_types") @db.JsonB
+  validFrom       DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo         DateTime? @map("valid_to") @db.Timestamptz(3)
+  enabled         Boolean   @default(true)
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fromUser      User         @relation("ApprovalDelegationFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser        User         @relation("ApprovalDelegationTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  createdBy     User?        @relation("ApprovalDelegationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, fromUserId, enabled, validTo])
+  @@map("approval_delegations")
 }
 
 model Product {
