@@ -26,6 +26,7 @@ import type {
 function stepMetadata(
   template: ApprovalStepTemplate,
   requestedByUserId: string | null,
+  escalationRoleKey?: string,
 ): Prisma.InputJsonValue {
   const base =
     template.metadata &&
@@ -38,13 +39,14 @@ function stepMetadata(
     ...(template.eligibleRoleKeys
       ? { eligibleRoleKeys: template.eligibleRoleKeys }
       : {}),
+    ...(escalationRoleKey ? { escalationRoleKey } : {}),
     ...(base && "assignment" in base && base.assignment === "requester"
       ? { requesterUserId: requestedByUserId }
       : {}),
   } as Prisma.InputJsonValue;
 }
 
-async function activeUsersForRole(
+export async function activeUsersForApprovalRole(
   organizationId: string,
   roleKey: string,
 ) {
@@ -62,7 +64,7 @@ async function activeUsersForRole(
   return rows.map((row) => row.userId);
 }
 
-async function eligibleUsersForStep(step: {
+export async function eligibleUsersForApprovalStep(step: {
   assignedUserId: string | null;
   assignedRoleKey: string | null;
   metadata: unknown;
@@ -88,7 +90,7 @@ async function eligibleUsersForStep(step: {
   ];
   const users = await Promise.all(
     [...new Set(keys)].map((key) =>
-      activeUsersForRole(step.organizationId, key),
+      activeUsersForApprovalRole(step.organizationId, key),
     ),
   );
   return [...new Set(users.flat())];
@@ -142,7 +144,7 @@ async function assertStepActor(
     throw new BadRequestError("現在処理できる承認ステップではありません。");
   }
 
-  const eligibleUsers = await eligibleUsersForStep(step);
+  const eligibleUsers = await eligibleUsersForApprovalStep(step);
   if (eligibleUsers.includes(context.user.id)) return step;
   if (
     await isDelegatedTo(
@@ -213,7 +215,11 @@ export async function createApprovalRequest(
         assignedRoleKey: template.assignedRoleKey ?? null,
         anyOneGroupKey: template.anyOneGroupKey ?? null,
         dueAt: index === 0 ? sla.escalationAt : null,
-        metadata: stepMetadata(template, requestedByUserId),
+        metadata: stepMetadata(
+          template,
+          requestedByUserId,
+          policy.escalationRoleKey,
+        ),
       })),
     });
 
@@ -268,7 +274,7 @@ export async function createApprovalRequest(
 
   const first = await currentStep(created.id);
   if (first) {
-    const recipients = await eligibleUsersForStep(first);
+    const recipients = await eligibleUsersForApprovalStep(first);
     await notifyApprovalUsers(prisma, {
       organizationId,
       recipientUserIds: recipients,
@@ -411,7 +417,7 @@ async function actOnStep(
   if (action === "approve") {
     const next = await currentStep(approvalRequestId);
     if (next) {
-      const recipients = await eligibleUsersForStep(next);
+      const recipients = await eligibleUsersForApprovalStep(next);
       await notifyApprovalUsers(prisma, {
         organizationId: context.organization.id,
         recipientUserIds: recipients,
