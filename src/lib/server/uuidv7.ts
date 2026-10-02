@@ -2,10 +2,11 @@ import { randomBytes } from "node:crypto";
 
 export function uuidv7(now = Date.now()) {
   const bytes = randomBytes(16);
-  const timestamp = BigInt(now);
+  let timestamp = Math.max(0, Math.floor(now));
 
   for (let index = 5; index >= 0; index -= 1) {
-    bytes[index] = Number((timestamp >> BigInt((5 - index) * 8)) & 0xffn);
+    bytes[index] = timestamp % 256;
+    timestamp = Math.floor(timestamp / 256);
   }
 
   bytes[6] = 0x70 | (bytes[6] & 0x0f);
