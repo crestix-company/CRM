@@ -12,6 +12,7 @@ import { isGoogleCalendarIntegrationEnabled } from "./feature-flags";
 import { prisma } from "./prisma";
 import {
   currentEncryptionKeyVersion,
+  encryptedSecretKeyVersion,
   decryptSecret,
   encryptSecret,
   hashToken,
@@ -337,6 +338,25 @@ export async function completeGoogleCalendarOAuth(input: {
         },
       },
     });
+    // A parallel deployment may still use the previous encryption key.
+    // Never replace or relabel its shared connection implicitly.
+    if (current && (
+      (current.encryptedAccessToken &&
+        encryptedSecretKeyVersion(current.encryptedAccessToken) !== currentEncryptionKeyVersion()) ||
+      (current.encryptedRefreshToken &&
+        encryptedSecretKeyVersion(current.encryptedRefreshToken) !== currentEncryptionKeyVersion()) ||
+      (current.encryptionKeyVersion &&
+        current.encryptionKeyVersion !== currentEncryptionKeyVersion())
+    )) {
+      throw new BadRequestError(
+        "既存のGoogle Calendar接続は別の暗号化鍵で管理されています。管理者による安全な切替が必要です。",
+      );
+    }
+    if (!token.refresh_token && !current?.encryptedRefreshToken) {
+      throw new BadRequestError(
+        "GoogleからRefresh Tokenを取得できませんでした。再度認可してください。",
+      );
+    }
     await tx.googleCalendarConnection.upsert({
       where: {
         organizationId_userId: {
@@ -379,6 +399,12 @@ export async function completeGoogleCalendarOAuth(input: {
 }
 
 async function refreshAccessToken(connection: CalendarConnection) {
+  if (connection.encryptedRefreshToken &&
+      encryptedSecretKeyVersion(connection.encryptedRefreshToken) !== currentEncryptionKeyVersion()) {
+    // Do not mark a connection as REAUTH_REQUIRED just because this deployment
+    // cannot decrypt a token managed by another deployment/key version.
+    throw new BadRequestError("Google Calendar接続の暗号化鍵Versionが異なります。");
+  }
   const refreshToken = decryptSecret(connection.encryptedRefreshToken);
   const clientId = googleClientId();
   const clientSecret = googleClientSecret();
@@ -433,6 +459,10 @@ async function refreshAccessToken(connection: CalendarConnection) {
 }
 
 export async function getValidAccessToken(connection: CalendarConnection) {
+  if (connection.encryptedAccessToken &&
+      encryptedSecretKeyVersion(connection.encryptedAccessToken) !== currentEncryptionKeyVersion()) {
+    throw new BadRequestError("Google Calendar接続の暗号化鍵Versionが異なります。");
+  }
   const current = decryptSecret(connection.encryptedAccessToken);
   if (
     current &&
