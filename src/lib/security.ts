@@ -55,6 +55,15 @@ export function encryptSecret(value: string | null | undefined) {
   ].join(".");
 }
 
+/** Returns the stored token's key version without exposing its plaintext. */
+export function encryptedSecretKeyVersion(value: string | null | undefined) {
+  if (!value) return null;
+  const parts = value.split(".");
+  if (parts.length === 4 && /^v[0-9]+$/.test(parts[0])) return parts[0];
+  // Earlier unversioned three-part payloads must not be silently treated as v2.
+  return "legacy";
+}
+
 export function decryptSecret(value: string | null | undefined) {
   if (!value) return null;
   const parts = value.split(".");
