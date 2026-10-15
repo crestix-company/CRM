@@ -3,7 +3,7 @@
 ## GitHub
 
 - `origin/main`: `0c3045a`、監査branch baseと一致。
-- Open PR: #1〜#18。#18は`fix/google-calendar-legacy-token-guard`→`main`のDraftで未マージ。
+- Stage1監査対象Open PR: #1〜#18。#18は`fix/google-calendar-legacy-token-guard`→`main`のDraftで未マージ。監査成果はdocs-only Draft PR #19として作成した。
 - #18 head: `b5ff99a`。Vercel Preview statusは旧`crm`と新`crestix-aios-crm`の両方SUCCESSだが、機能試験完了を意味しない。
 - 本監査はPR #18のbranch、内容、Draft状態を変更していない。
 

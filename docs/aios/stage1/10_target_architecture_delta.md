@@ -12,7 +12,7 @@ Users / public intake
   -> Connectors (Calendar, Drive, CloudSign, Clinic Lead)
 ```
 
-Clinic Lead remains its own operational SoT for clinic prospect/enrichment. Current Clinic Lead main already uses `hwdvyhunozporfuefteb` with `public.clinics`, `provenance`, `research`, `treatment`, `hp_research`; it must not be recreated inside CRM from obsolete PR #1〜#11 drafts. CRM receives explicit approved links/conversions, not bulk duplication.
+正式要件では医院・法人・担当者の最終SOTはCRMである。Current Clinic Lead mainは`hwdvyhunozporfuefteb`の`public.clinics`, `provenance`, `research`, `treatment`, `hp_research`で稼働しているため、移行期間中のprospect/enrichment供給元・bridgeとして扱う。obsoleteなPR #1〜#11をCRM DBへ再適用せず、source authority、ID mapping、同期方向、conversion、cutover、rollbackを明示して段階的にCRMへ正本を寄せる。恒久的なdual-write/dual-SoTは禁止する。
 
 ## Delta by layer
 
@@ -21,7 +21,7 @@ Clinic Lead remains its own operational SoT for clinic prospect/enrichment. Curr
 | Tenant auth | app session + org predicates | central scoped repository/command guard + negative tests | EXTEND |
 | DB security | public 80 tables no RLS/full anon grants | least-privilege runtime role, Data API allowlist, RLS on exposed tables | NEW/P0 |
 | Organization | BusinessUnit flat | keep BU; optional OrgNode only after official approval | EXTEND |
-| Clinic model | Company + associations | CorporateGroup/HospitalProfile + Clinic Lead link | NEW/LINK |
+| Clinic model | Company + associations、Clinic Lead別DB | CorporateGroup/HospitalProfile + staged Clinic Lead bridge + CRM authority/cutover | NEW/LINK/P0 decision |
 | Sales | Deal/LineItem/Participant/Event | E1/E2/Yomi/lead-time explicit events and required fields | EXTEND |
 | Contract/finance | line item workflow only | contract snapshot, CloudSign executed fact, invoice/payment schedule/actual | NEW |
 | Meeting | booking + task | MeetingRecord, transcript ref, Minutes, Decision, Task linkage | NEW |
@@ -44,11 +44,12 @@ Clinic Lead remains its own operational SoT for clinic prospect/enrichment. Curr
 
 1. P0 security preview design; no production one-shot RLS.
 2. Add link/profile tables with nullable/backward-compatible fields.
-3. Backfill mappings in dry-run; keep existing IDs.
-4. Add dual-read comparison behind disabled feature flag.
-5. Enable role-specific UI on a canary organization.
-6. Add contract/meeting/approval domains in separate migrations.
-7. Only after acceptance, retire legacy display paths; do not delete records.
+3. Define Clinic Lead→CRM field authority and create a read-only comparison connector first.
+4. Backfill mappings in dry-run; keep existing IDs and provenance.
+5. Add bounded dual-read comparison behind disabled feature flag; do not enable indefinite dual-write.
+6. Enable role-specific UI on a canary organization.
+7. Add contract/meeting/approval domains in separate migrations.
+8. Cut over each authoritative field only after reconciliation/rollback approval; retain source history and do not delete CRM records.
 
 ## Release / rollback
 

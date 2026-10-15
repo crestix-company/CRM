@@ -11,6 +11,12 @@
 
 Prisma modelは79件、実DB public base tableは80件。79業務テーブルはPrisma modelに対応し、残る1件はPrisma管理用`_prisma_migrations`。Prisma migration directoryは21件、DBの完了migrationもdistinct 21件だった。DB履歴には失敗後rollbackされた2行が追加で残るため `_prisma_migrations` は23行。テーブル単位のdriftは検出されなかった。列単位は下表の実DBcatalogを全件記録したが、Prisma型・DB型の意味変換を含む完全自動diffは未実施のため、厳密な型/default driftは **UNVERIFIED**。
 
+## Referential integrity verification
+
+2026-10-15の追加READ ONLY queryで、public schemaの物理FKは106件、`NOT VALID`は0件だった。PostgreSQL constraintで保護される参照に未検証FKはない。
+
+PR #13で抽出した疎結合IDのうち、ObjectAssociationのCompany/Contact/Deal/Activity/Task source/target、DeliveryProjectのCompany/Contact/source Deal/BU/owner、MeetingBookingのCompany/Contact/Deal、DealParticipant user、Deal origin Deal/Project/next-action owner、SalesPerformanceEvent credited userの23系統を照合し、孤児はすべて0件だった。これは観測時点の主要参照checkであり、全JSON/metadata内IDや全scalar UUIDの意味的整合性を保証しない。
+
 ## 全テーブル・全列
 
 Soft deleteは実列 `deleted_at` の有無で判定。各列の `DEFAULT` は値そのものを秘密化するため有無だけを示す。

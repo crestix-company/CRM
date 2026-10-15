@@ -12,25 +12,28 @@
 
 ## Input completeness
 
-依頼された15件のうち、`.codex-input/`で確認できたのは次の1件のみ。
+初回監査時は統合Markdown 1件のみだったが、2026-10-15の再監査で依頼された15件をすべて確認した。
 
 | Expected | Observed | Status |
 |---|---|---|
-| `official_00.docx`〜`official_12.docx` | 0/13 | **MISSING / UNVERIFIED** |
+| `official_00.docx`〜`official_12.docx` | 13/13 | **VERIFIED / FULL TEXT REVIEWED** |
 | `Crestix_AI_OS_requirements.md` | 1/1、17,047 bytes | VERIFIED |
-| 質問事項管理xlsx（統合Markdownに記載） | 0/1 | **MISSING / UNVERIFIED** |
+| `requirements_tracking.xlsx` | 1/1、8 sheets / 計画表154 rows | VERIFIED |
 
-`.codex-input/`は`.git/info/exclude`で除外され、Git tree/history/LFSにも原本は存在しなかった。したがって本監査は統合Markdownを作業指示・二次索引として実施したが、00〜12原本の完全要件との逐語照合は完了していない。`09_requirements_traceability_matrix.md`の原文列はこの制約を明示する。
+`.codex-input/`は`.git/info/exclude`で除外されている。原本は読み取り専用で使用し、Git treeへ追加していない。正式要件との照合結果は`14_official_requirements_conformance.md`、計画表のローカル更新案は`15_requirements_tracking_update_proposal.md`に記録する。
 
 ## Evidence hierarchy
+
+規範上のSource of Truthは`official_00.docx`〜`official_12.docx`である。実装状態は別軸で、次の観測証跡により判定する。
 
 1. READ ONLY production catalog/count query（観測時点の事実）
 2. audited main source / Prisma / migrations
 3. GitHub PR metadata/diff and CI status
-4. 統合Markdownの要件索引
-5. 推奨・推定（PROPOSED / INFERRED）
+4. `requirements_tracking.xlsx`の確認済み回答/計画行
+5. 統合Markdownの追加運用要件・作業指示
+6. 推奨・推定（PROPOSED / INFERRED）
 
-原本未確認事項を正式仕様として確定しない。
+正式要件にない観測・推定を仕様として確定せず、正式要件との一致だけで実装/受入完了とは判定しない。
 
 ## Stage A〜D result
 
@@ -38,7 +41,7 @@
 |---|---|---|
 | A 現状事実 | COMPLETE WITH BLOCKERS | Vercel対象team権限なし。production UI browser計測なし |
 | B データ実態 | COMPLETE READ ONLY | 医療/飲食はkeyword candidate。業務担当の全件レビュー未実施 |
-| C 正式要件Gap | PARTIAL | official 00〜12欠落のため完全traceabilityはBLOCKED |
+| C 正式要件Gap | COMPLETE FOR STAGE1 | 全13文書を照合。機能受入は未実装/未確認として分離 |
 | D 設計準備 | COMPLETE AS PROPOSAL | migration/applyは一切未実施 |
 
 ## Secret handling

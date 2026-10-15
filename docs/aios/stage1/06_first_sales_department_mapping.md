@@ -2,7 +2,7 @@
 
 ## Verified organization structure
 
-正式追加要件の「第一営業部」と完全一致するBusinessUnit/Teamはproductionに存在しない。
+official_01/11は「第一営業部 FS共有資料」「第一営業部 IS共有資料」を正式な知識参照先として明記するが、DB上の組織ID/名称対応は定義していない。「第一営業部」と完全一致するBusinessUnit/Teamはproductionに存在しない。
 
 | Organization | Organization ID | Unit | Unit ID | Active / deleted Deals | Active memberships |
 |---|---|---|---|---:|---:|

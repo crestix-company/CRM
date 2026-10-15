@@ -2,7 +2,7 @@
 
 ## 結論
 
-現行mainは45画面、153 API route、79 Prisma modelsを持つ広いCRMで、Company/Contact/Deal/Task/MeetingBooking/Delivery/KPI/Product/Import/Google CalendarをKEEP/EXTENDできる。一方、医院カルテ、法人→医院階層、契約/請求/入金、AI Artifact、Human Gate、MeetingRecord/Minutes/Decisionはmainに存在しない。
+現行mainは53画面（`src/app/**/page.tsx`）、153 API route、79 Prisma modelsを持つ広いCRMで、Company/Contact/Deal/Task/MeetingBooking/Delivery/KPI/Product/Import/Google CalendarをKEEP/EXTENDできる。一方、医院カルテ、法人→医院階層、契約/請求/入金、AI Artifact、Human Gate、MeetingRecord/Minutes/Decisionはmainに存在しない。
 
 認証はopaque session cookie→AuthSession→active OrganizationMembership。tenant keyは `getAuthContext().organization.id` から得る。Roleは SUPER_ADMIN/ADMIN/MANAGER/USER/READ_ONLY。BusinessUnitはread ACLではなく、active organization memberは全active unitを閲覧可能（`src/lib/business-units.ts`）。
 
@@ -17,6 +17,25 @@
 | READ_ONLY | CRM read、export |
 
 Permission catalog: CRM_READ/WRITE/DELETE, pipeline/member/organization/custom-property/KPI/target/calendar/product/sales/delivery management, audit read, import/export。個別例外・部署階層scope・approval権限はmainにはない。
+
+## Role dashboard and major CRUD fields
+
+| Area | Verified source fields / behavior | Formal gap |
+|---|---|---|
+| Role dashboard | IS/FS/CSごとにKPI、担当案件、会議、通知、要対応を集約 | CEO、経理、承認待ち、AI説明、会社Priorityは不足 |
+| Company | name, domain, phone, industry, website, employee count, address, annual revenue, owner, custom fields | 法人→医院、診療科、院長、商圏、代表statusなし |
+| Contact（表示: 担当者） | name, email, phone/mobile, job title, lifecycle, lead status, source, owner, memo, custom fields | 複数business role/決裁・推進・反対roleの正規化なし |
+| Deal | company association, name, amount, BU/product, pipeline/stage, close dates, source, loss reason, owner, custom fields | 正式Yomi履歴、LeadTime、契約/入金SOTなし |
+| DealLineItem | product/price, quantity, initial/recurring fee, revenue/gross profit, expected values, meeting/contract/collection/billing/cancel dates, status/loss | Contract/Fee snapshot、請求予定と実績の分離なし |
+| Task | title, owner, due, status, priority, type, related Contact/Company/Deal, description | purpose, completion criteria, source, dependency, evidenceなし |
+| Appointment | BU/IS/FS、source、company/contact、日時/形式、product、quality、Calendar sync、目的/懸念。設定で動的fieldを構成 | E1 prep job、Meet recording/transcript、Minutes接続なし |
+| Delivery | stage/note、CS owner、hearing/next action/draft/publish dates、health/blocker、handoff、cross-sell | CSPlan、月次、更新/解約、AI Human Gateなし |
+
+主要CRUDのsource fieldは確認済み。mobileはresponsive classを持つが、実機、viewport別操作、自然言語検索導線は未試験のため**UNVERIFIED**。
+
+## Audit write coverage
+
+`auditLog.create`は26 source modulesで確認した。organization/member、BusinessUnit、KPI/metric、ActionPlan、import/export等は明示監査される。一方、Company/Contact/Dealの通常CRUD、Task、Calendar/Deliveryの全重要変更を共通command層で強制する仕組みはない。正式要件の「重要データ原則すべてbefore/after」には不足し、route単位の負荷なくcoverageを証明するtestが必要。
 
 ## 画面一覧 (53)
 

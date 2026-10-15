@@ -40,6 +40,8 @@
 | active Deal without line items | 873 / 2,129 | 金額/粗利集計のcoverage gap |
 | active Deal without Company association | 1 | review対象 |
 | duplicate nonblank Deal external ID groups | 0 | observed |
+| physical FK constraints / NOT VALID | 106 / 0 | 全物理FK validated |
+| major loose-reference orphan checks | 0 / 23系統 | PR #13の高優先logical IDs。JSON/metadataは対象外 |
 
 ## Classification counts
 
@@ -60,7 +62,7 @@ ROLLBACK;
 
 ## UNVERIFIED
 
-- official文書が定めるデータ品質閾値。
+- official文書は品質原則を定めるが、NULL/重複の数値閾値は未指定。
 - Company/Contactの「医院/法人/担当者」正規化ルール。
 - 不明924社/1,460件超Dealの人手分類。
 - app runtimeを通した同時実行・large-scale latency。

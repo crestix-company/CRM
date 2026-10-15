@@ -60,17 +60,17 @@ Current `crestix-company/crestix-clinic-lead-system` main is `e543249` (2026-10-
 - `clinic_runtime` is least-privilege with RLS; anon/auth unintended writes 0; 162,258 clinics and 632,903 rows across 19 tables were reconciled.
 - Stage5 code/runtime closure exists; Windows/two-PC external acceptance remains pending.
 
-Thus applying #1–#11 would duplicate or fork the current Clinic Lead SoT and create conflicting schema/identity/migration paths. The safe AIOS relationship is an explicit connector/link from CRM to current Clinic Lead, not replaying the old chain.
+Thus applying #1–#11 would duplicate or fork the current Clinic Lead implementation and create conflicting schema/identity/migration paths. The safe transitional relationship is an explicit connector/link, not replaying the old chain. However, official_01/02 define clinic/company/contact data as CRM SOT: Clinic Lead cannot remain an indefinite second SOT. Stage2 must approve field authority, ID/provenance mapping, reconciliation, cutover and rollback before any write path.
 
 ## #14–#17 stack review
 
 Order must remain #14 schema → #15 permissions → #16 service/migration → #17 UI. Do not squash the decision boundaries before review. Before any merge:
 
-1. Obtain official 00–12 authority/SLA wording.
+1. Use official 00–12 authority/Human Gate/master化 wording now recorded in this audit.
 2. Rebase #14 on current main and apply migration only to isolated preview DB.
 3. Validate schema rollback/recreate, partial unique constraints, RLS/Data API interaction.
 4. Rebase #15 and prove BusinessUnitMembership is not a read ACL.
-5. Merge/reuse #12 UUID helper, then rebase #16; verify idempotency, stale-target and audit.
+5. Reuse #12 UUID helper only as an internal technical choice, then rebase #16; verify idempotency, stale-target, audit and configurable approvers/SLA.
 6. Rebase #17, restore Draft status, fix failed Vercel check, run UI/API tenant E2E.
 
 ## Safe review / integration sequence
@@ -79,7 +79,7 @@ Order must remain #14 schema → #15 permissions → #16 service/migration → #
 2. **#12**: run full repo validation; merge candidate if policy accepted.
 3. **#1–#11**: owner confirms superseded status; archive useful docs externally, then separate close decision (not in this task).
 4. **#18**: keep Draft; isolated v1/v2 test and dual-deployment ownership plan. Do not merge merely because Preview is green.
-5. Resolve Stage1 P0 DB exposure and official source gaps.
+5. Resolve Stage1 P0 DB exposure, Clinic Lead→CRM authority and unanswered information-classification/retention decisions.
 6. **#14**, then **#15**, **#16**, **#17** in order, each rebased and independently gated.
 
 No current PR should be batch-merged. No PR should execute production migrations as part of review.
