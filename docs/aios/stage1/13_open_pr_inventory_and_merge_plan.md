@@ -2,9 +2,10 @@
 
 ## Snapshot and safety
 
-- Observed: 2026-10-15, GitHub read-only.
-- 18 open PRs; no merge/close/rebase/push performed.
-- GitHub reports all heads MERGEABLE at observation time. #14/#17 are UNSTABLE; #17 Vercel `crm` failed. Other visible checks are primarily Vercel deployment/comments, not a full typecheck/lint/unit/build suite.
+- Observed: 2026-10-16, GitHub read-only (`gh pr list/view/diff`).
+- PR #1–#18 are OPEN; no merge/close/rebase/PR branch update performed. PR #19 is this audit PR and is outside the 18-PR inventory.
+- GitHub currently reports all 18 as `MERGEABLE`. This only reports the observed Git mergeability; it does not validate an unmerged parent PR or the compatibility of a stacked branch after rebasing.
+- Visible checks: #1–#13 and #15–#16 show Vercel Preview/deployment success; #14 has one Vercel check PENDING and `Vercel – crm` SUCCESS; #17 `Vercel – crm` FAILURE; #18 has both Vercel deployments SUCCESS. These checks are not a full typecheck/lint/unit/build suite; PR #18 explicitly says its code checks have not yet run.
 - Classification is recommendation, not authorization.
 
 ## Dependency graph
@@ -19,35 +20,39 @@ main -> #18 (independent Draft; keep Draft)
 
 ## Per-PR decision
 
-| PR | Purpose / changed scope | Schema / migration | Base → head / CI-conflict | Requirements & operational impact | Recommendation / next action |
-|---:|---|---|---|---|---|
-| #1 | Clinic DB coexistence docs, SQL drafts, UUID test (9 files) | draft `clinic_master`/`clinic_ops`; no Prisma migration | main→`docs/clinic-db-design`; CLEAN; Vercel green | clinic-first intent aligns, but targets CRM Supabase and obsolete schema | **SUPERSEDED**. Preserve useful history; compare current Clinic Lead architecture, then close only with approval |
-| #2 | read-only SQLite audit/mapping (2 docs) | none | #1→readonly-mapping; CLEAN | evidence was useful but 2026-09 snapshot | **SUPERSEDED** by current Clinic Lead Supabase runtime/evidence |
-| #3 | consumer contract/mapping (2 docs) | none | #2→consumer-contract; CLEAN | source-specific URL/Comdesk ideas remain relevant | **SUPERSEDED**; salvage concepts into connector ADR only |
-| #4 | review resolution (3 docs) | none | #3→review-resolution; CLEAN | append-only/provenance aligns | **SUPERSEDED** by current operational implementation |
-| #5 | finalized Schema v1 docs/SQL (12 files) | draft schemas/views; no Prisma migration | #4→schema-v1; CLEAN | explicit no anon grants good; physical shape no longer current | **SUPERSEDED**; do not apply drafts |
-| #6 | runtime vocab correction (6 files) | SQL drafts amended | #5→runtime-contract; CLEAN | vocab findings may be historical reference | **SUPERSEDED**; current main must be source |
-| #7 | scratch PostgreSQL 17 validation script (3 files) | applies draft schema only to localhost | #6→schema-validation; CLEAN | testing pattern reusable | **SUPERSEDED**; port test ideas, not schema |
-| #8 | write-zero importer + 58 tests (25 files) | none; reads 162,258 SQLite rows | #7→importer-dry-run; CLEAN | dry-run-first aligns | **SUPERSEDED**; current Clinic Lead already cut over, do not rerun against CRM DB |
-| #9 | scratch apply/rehearsal (7 files) | scratch loader, no CRM migration | #8→rehearsal; CLEAN | historical rehearsal; high memory limitation | **SUPERSEDED** |
-| #10 | resumable production migration runner (7 files) | can write target schema when invoked | #9→production-runner; CLEAN | highest accidental-apply risk; current system already migrated elsewhere | **SUPERSEDED**; never run against `xtsp...` |
-| #11 | CANCELLED job contract (14 files) | draft CHECK changes | #10→cancelled-contract; CLEAN | current Clinic Lead has later job/runtime contract | **SUPERSEDED** |
-| #12 | UUIDv7 helper/test/policy + AGENTS (4 files) | none | main→uuid policy; CLEAN; Vercel green | preserves existing IDs; aligns Stage1 | **MERGE_CANDIDATE** after full repo commands; coordinate duplicate helper in #16 |
-| #13 | CRM Relation/FK audit doc (1 file) | none | main→relation audit; CLEAN; Vercel green | directly supports Stage1; production facts added by this audit | **MERGE_CANDIDATE**. Integrate doc after reconciling production evidence |
-| #14 | OrgNode/Role/HospitalProfile/Approval schema + doc (3 files) | `20261002090000_stage3_core_foundation` | main→core-foundation; UNSTABLE, one pending | Human Gate/Hospital aligns, but official sources missing and DB security blocker unresolved | **HOLD**. Isolated preview migration/rollback + authority review first |
-| #15 | effective permission resolver/tests (3 files) | none, depends #14 models | #14→permission-resolver; CLEAN | individual allow/deny useful; must preserve all-active-BU read rule | **REBASE_REQUIRED** after #14 decision; tenant/BU regression tests |
-| #16 | approval service/policies/SLA + enum migration (11 files) | `20261002110000_stage3_approval_operational_events` | #15→approval-service; CLEAN | Human Gate aligned; hardcoded people/SLA require official approval; duplicate UUID helper | **REBASE_REQUIRED** after #12/#14/#15; preview DB and stale-target tests |
-| #17 | approval UI/API (9 files) | none directly; needs #14/#16 DB | #16→approval-ui; UNSTABLE; Vercel `crm` FAILURE | useful UI, but non-draft despite dependency and failing deployment | **REBASE_REQUIRED**; return to Draft recommended, fix CI, E2E permission tests |
-| #18 | v1 token version guard (3 files) | none | main→calendar guard; CLEAN; both Vercel green | directly mitigates existing two v1 connections but cutover remains untested | **HOLD** and keep **Draft** exactly as requested; test on isolated clone, no enable/deploy |
+| PR / Priority | Purpose and files changed | Schema / Migration | Current base → head; GitHub state / checks | Formal requirements and operational impact | Classification; evidence; next action |
+|---|---|---|---|---|---|
+| #1 / P2 | Clinic coexistence design, SQL drafts, UUID test (9 files; +1,263) | Draft `clinic_master` / `clinic_ops` SQL; no Prisma migration | `main` → `docs/clinic-db-design`; MERGEABLE; Vercel PASS | Clinic-first direction is relevant, but formal docs set CRM as final clinic/company/contact SOT; proposal puts a second master in the CRM Supabase project | **SUPERSEDED** — current Clinic Lead system uses a separate project/schema. Retain only relevant design history; owner approval required before any closure |
+| #2 / P2 | Read-only SQLite audit and mapping (2 docs; +310) | None | #1 branch → `feature/clinic-db-readonly-mapping`; MERGEABLE; Vercel PASS | Historical 2026-09 source snapshot, not the current production CRM relation inventory | **SUPERSEDED** — preserve only source facts still useful to an approved connector/migration ADR |
+| #3 / P2 | Consumer contract and mapping corrections (2 files; +189/−38) | None | #2 branch → `feature/clinic-db-consumer-contract`; MERGEABLE; Vercel PASS | Source-specific URL, Maps, research and Comdesk concepts may inform a connector boundary; does not satisfy CRM-final-SOT requirement | **SUPERSEDED** — salvage useful contracts into Stage2 design, do not integrate this branch |
+| #4 / P2 | Review resolutions and append-only provenance (3 files; +242/−13) | None | #3 branch → `feature/clinic-db-review-resolution`; MERGEABLE; Vercel PASS | Append-only history aligns with audit needs, but implementation belongs in the current Clinic Lead source or an approved CRM link design | **SUPERSEDED** — archive useful decisions; no branch integration |
+| #5 / P2 | Consolidated Clinic Schema v1 design and SQL (12 files; +713/−94) | Draft schemas/views/RLS SQL; no Prisma migration | #4 branch → `feature/clinic-db-schema-v1`; MERGEABLE; Vercel PASS | Draft excludes anon/auth grants, but physical design targets the superseded second-master direction | **SUPERSEDED** — do not apply the SQL drafts |
+| #6 / P2 | Runtime vocabulary corrections (6 files; +294/−27) | Draft SQL amendments only | #5 branch → `feature/clinic-db-runtime-contract-v1`; MERGEABLE; Vercel PASS | Useful historical vocabulary; current production Clinic Lead code is the authority for source behavior | **SUPERSEDED** — keep only as historical reference |
+| #7 / P2 | PostgreSQL 17 scratch schema validation (3 files; +470/−1) | Validation script applies the draft schema to localhost only when invoked | #6 branch → `feature/clinic-db-schema-validation-v1`; MERGEABLE; Vercel PASS | Local validation method may be reused after an approved target design; it does not validate the current CRM schema | **SUPERSEDED** — reuse test ideas only; do not run against production |
+| #8 / P2 | Write-zero SQLite importer and 58 tests (25 files; +1,919) | No DB migration; reads source SQLite | #7 branch → `feature/clinic-db-importer-dry-run-v1`; MERGEABLE; Vercel PASS | Dry-run-first aligns with formal rules; importing the already-cut-over dataset into CRM would duplicate clinics and history | **SUPERSEDED** — do not run against the CRM database; only reconsider for an approved reconciliation/cutover plan |
+| #9 / P2 | Scratch PostgreSQL migration rehearsal (7 files; +1,027/−1) | Scratch loader/apply code; no CRM Prisma migration | #8 branch → `feature/clinic-db-migration-rehearsal-v1`; MERGEABLE; Vercel PASS | Evidence is tied to the former target schema and includes documented resource limits | **SUPERSEDED** — no production execution; retain only as historical rehearsal evidence |
+| #10 / P0 risk; P2 review | Resumable production migration runner (7 files; +1,441/−5) | No Prisma migration file; runner can write its target when explicitly invoked | #9 branch → `feature/clinic-db-production-migration-runner-v1`; MERGEABLE; Vercel PASS | Highest accidental-write risk in #1–#11; target/schema differs from the current Clinic Lead production project | **SUPERSEDED** — do not invoke against CRM/Supabase; retain runner only if a separately approved future migration is needed |
+| #11 / P2 | CANCELLED job contract/schema draft (14 files; +132/−14) | Draft CHECK/schema SQL amendments; no Prisma migration | #10 branch → `feature/clinic-db-cancelled-contract-v1`; MERGEABLE; Vercel PASS | Historical job contract; current Clinic Lead implementation advanced beyond this proposal | **SUPERSEDED** — archive useful contract notes; owner approval required before closure |
+| #12 / P1 | UUIDv7 helper, policy, test and AGENTS rule (4 files; +154) | None | `main` → `chore/uuidv7-id-policy`; MERGEABLE; Vercel PASS | Compatible as a new-ID policy if existing IDs and external ID mappings remain unchanged; helper duplicates a copy in #16 | **MERGE_CANDIDATE** — run the full repository suite on this head and decide helper ownership before #16 is rebased |
+| #13 / P0 audit evidence | CRM Relation/FK audit (1 doc; +358) | None | `main` → `docs/crm-db-02-relation-audit`; MERGEABLE; Vercel PASS | Directly supports Stage1 DB inventory; its own scope is code/schema based and explicitly says production was not queried | **MERGE_CANDIDATE** — review the document and cross-link this Stage1 production addendum; do not represent its source audit as production evidence |
+| #14 / P0 blocker; P1 review | OrgNode, RoleDefinition, HospitalProfile, approval schema and design (3 files; +668/−5) | `20261002090000_stage3_core_foundation` | `main` → `feat/stage3-core-foundation-schema`; MERGEABLE; one Vercel check PENDING, `crm` PASS | New hierarchy, permissions, clinic profile and approval entities align in direction. Hard-coded org/approval assumptions need owner review; migration leaves current RLS/grants unchanged while P0 security remains open | **HOLD** — no merge until business authority and least-privilege design are approved and migration rollback/CRM smoke tests pass on isolated preview DB |
+| #15 / P1 | Effective permission resolver and tests (3 files; +258/−2) | None; depends on #14 schema | #14 branch → `feat/stage3-permission-resolver`; MERGEABLE; Vercel PASS | Role + org-node + individual override is directionally aligned; must not use `BusinessUnitMembership` as read ACL and must preserve tenant context from `getAuthContext()` | **REBASE_REQUIRED** — rebase after #14 decision; add/test allow-deny, cross-tenant, and all-active-BU visibility cases |
+| #16 / P1 | Approval policy/service/SLA/notifications and tests (11 files; +1,024) | `20261002110000_stage3_approval_operational_events` (enum/schema migration) | #15 branch → `feat/stage3-approval-service`; MERGEABLE; Vercel PASS | Human Gate mechanism aligns. Named approvers, SLA values and role behavior are business decisions/configuration, not safe AI defaults; UUID helper duplicates #12 | **REBASE_REQUIRED** — after #12/#14/#15 decisions, replace unapproved fixed authority with approved configurable policy; validate idempotency, stale target, audit and isolated migration |
+| #17 / P1 | Approval inbox/detail/API and navigation (9 files; +470/−4) | No migration in this PR; requires #14/#16 models | #16 branch → `feat/stage3-approval-ui`; MERGEABLE; `crm` FAILURE; PR is not Draft | Approval UI is useful after authority is approved; page/API access needs tenant/role/step-level tests | **REBASE_REQUIRED** — return to Draft, fix failed deployment check, rebase after #14–#16, and pass UI/API permission E2E |
+| #18 / P0 operational protection | Google Calendar token-version guard and tests (3 files; +85) | None | `main` → `fix/google-calendar-legacy-token-guard`; MERGEABLE; both Vercel projects PASS; Draft | Protects two existing v1 connections against v2-key operations; no OAuth cutover, real v1 DB exercise or full code suite yet | **HOLD; KEEP DRAFT** — preserve the old connection; run unit/full-suite and isolated v1/v2 regression review, then approve a separate cutover plan |
+
+“Priority” is review sequencing, not permission to merge. P0 entries are immediate safety/evidence gates; P1 are Stage2 foundations; P2 are cleanup/history candidates.
 
 ## PR #13 evidence incorporated
 
-PR #13 correctly separates physical FK from loose logical IDs. Production verification adds:
+PR #13 correctly separates physical FK from loose logical IDs. Independent read-only production verification adds:
 
+- The catalog inventory found 106 physical foreign-key constraints; 0 were `NOT VALID`.
+- 23 sampled high-priority loose-reference integrity checks returned 0 orphan rows. These point-in-time checks do not prove every logical reference is constrained or immutable.
 - `object_associations`: 5,838 rows; Deal→Company 2,105, Deal→Contact 2,104.
 - Company/Contact/Deal core links are polymorphic; cleanup cannot rely only on FK cascade/restrict.
 - High-priority loose IDs: MeetingBooking company/deal/businessUnit; DeliveryProject company/contact/sourceDeal/businessUnit; Deal origin; DealParticipant user; SalesPerformanceEvent sources.
-- All current public tables have RLS off/full anon grants—a production fact outside #13’s code-only scope.
+- Production security inventory separately observed public-schema tables with RLS disabled and broad anon grants. Treat this as a P0 exposure requiring authenticated-access validation and owner-approved remediation; this finding is outside #13’s code-only scope. No privilege/policy change was made.
 
 Therefore #13 is sound as a code inventory but should merge only with an addendum or cross-link to this production audit.
 
@@ -86,7 +91,7 @@ No current PR should be batch-merged. No PR should execute production migrations
 
 ## Exact changed-file inventory
 
-2026-10-15に`gh pr diff --name-only`で再取得した。積み上げPRはbaseからheadまでの差分であり、前段PRから継承したファイルを含む。
+2026-10-16に`gh pr diff --name-only`で再取得した。積み上げPRはbaseからheadまでの差分であり、前段PRから継承したファイルを含む。
 
 | PR | Changed files |
 |---:|---|
