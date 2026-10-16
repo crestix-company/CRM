@@ -18,7 +18,7 @@ Supabase公式説明では、exposed schema内のobjectにrole grantがあると
 
 ## Preconditions — この設計ではbranch/projectを作成しない
 
-前川が非本番のisolated環境を用意し、縞谷/セキュリティ責任者がデータ持ち込みを承認する。Supabase Branchがproduction migrationsを反映する挙動を含む場合、この依頼の制約下ではbranch作成も行わない。isolated projectまたはlocal Postgres/Supabaseに、空DBから同じschemaを再構築する。
+前川が非本番のisolated環境を用意し、縞谷/セキュリティ責任者がデータ持ち込みを承認する。CRMはSupabase Auth JWTではなく独自opaque-cookie sessionを使うため、Supabase Branch/local Supabaseで作る`authenticated` JWTはCRM sessionと別物である。Supabase Branchがproduction migrationsを反映する場合、この依頼の制約下ではbranch作成も行わない。isolated projectまたはlocal Postgres/Supabaseに、空DBから同じschemaを再構築する。
 
 - Production snapshot/raw data/token/session/user情報をPreviewへ複製しない。
 - Schema-onlyまたはsynthetic fixtureを使う。匿名化データ持込は別計画・別承認とし、識別子・自由記述・token・PIIを排除する。
@@ -45,8 +45,8 @@ Supabase公式説明では、exposed schema内のobjectにrole grantがあると
 2. Data APIが必要なら公開schema/objectをallowlist化し、内部tableは非exposed schemaに置く案を比較する。schema exposureはgrant/RLSの代替ではない。
 3. `anon`は原則CRM base table/view/function grantなし。Public intakeは汎用table writeでなく、狭いserver endpoint/API契約に限定。
 4. `authenticated`も明示allowlist＋最小権限grant。全exposed tableでRLSをenableし、tenant predicateとaction別policyを作る。`USING`と`WITH CHECK`双方を試験。
-5. tenant条件は信頼済みJWT/app metadataまたは検証済みserver-side identity contextから導出する。user-editable `user_metadata`やclient指定organizationIdを認可根拠にしない。
-6. Prisma direct DB runtimeにSupabase Auth JWT/RLS contextが自動伝達されると仮定しない。非BYPASSRLS専用role、owner回避、requestごとのtransaction-local tenant context、pool cleanupをPreviewで実証する。実現できないpolicyは適用しない。
+5. Supabase Auth利用箇所がコードにないため、`auth.uid()`をCRM sessionの認証根拠にしない。RLS tenant条件はPrisma requestが検証したserver-side identity contextから導出する案を別途実証する。user-editable `user_metadata`やclient指定organizationIdを認可根拠にしない。
+6. Prisma direct DB runtimeにCRM cookieまたはSupabase Auth JWT/RLS contextが自動伝達されると仮定しない。非BYPASSRLS専用role、owner回避、requestごとのtransaction-local tenant context、pool cleanupをPreviewで実証する。各Prisma queryが共通tenant-scoped transaction wrapperを通るかは未確認。wrapper未実装ならRLS enforcement前にapp refactorが必要。実現できないpolicyは適用しない。
 7. PostgreSQL対応範囲でviewに`security_invoker`を検討。exposed schemaの`SECURITY DEFINER` functionを避ける。sequence/function ACL、PUBLIC EXECUTEも検査。
 8. 最初の境界はOrganization。BusinessUnit membershipはread filterに使わない。write/action permissionsは正式role/business policyとして別途検証。
 
@@ -72,12 +72,12 @@ fixtureに実在顧客・担当者・Calendar・契約・token情報を入れな
 | API-03 | REST POST/PATCH/DELETE protected table, anon | synthetic canary write | 401/403。row/sequence/audit副作用なし |
 | API-04 | GraphQL (enabled only), anon | introspection/query/mutation | protected object非公開、副作用なし |
 | API-05 | exposed function/sequence | anon/auth EXECUTE/nextval | 明示allowlistのみ。不要EXECUTE/sequenceアクセスなし |
-| RLS-01 | SQL `SET LOCAL ROLE anon` + synthetic JWT | direct row access | Data API同等の拒否。GRANTとRLS要因を分離 |
+| RLS-01 | SQL `SET LOCAL ROLE anon` | direct row access | SQL role ACL/RLSを分離して検査。PostgREST/Data API HTTP試験の代替ではない |
 | RLS-02 | member-A | Organization-Aをselect | 必要な同一tenant行を閲覧可能 |
 | RLS-03 | member-A、Organization-B既知UUID | single/list/aggregate/view | 0 rowsまたは非開示404/403。不要な存在oracleなし |
 | RLS-04 | member-A | org-B row update/delete | 0変更または403。canary不変 |
 | RLS-05 | member-A | organizationId偽装/row A→B移動 | `WITH CHECK`で拒否。元row不変 |
-| RLS-06 | suspended-A / invalid/expired JWT | read/write | default deny |
+| RLS-06 | suspended-A / invalid/expired CRM cookie | Next.js session flow | default deny (401)。Supabase Auth JWTとは別に検証 |
 | RLS-07 | active A member | 自身membershipのないactive BUのrowをread | Organization内なら許可。BU membership read ACL禁止を証明 |
 | RLS-08 | active A member | inactive BU/deleted row | 承認済みactive/deleted policyどおり。例外記録 |
 | APP-01 | Next.js Preview API/Prisma | tenantは`getAuthContext()`由来 | URL/body/query organizationId偽装でcontextを上書き不可 |

@@ -26,6 +26,7 @@ Stage A〜DのREAD ONLY監査を実施した。production DBは80 public tables 
 16. [Requirements tracking update proposal](15_requirements_tracking_update_proposal.md)
 17. [Stage1 completion approval gates](16_stage1_completion_approval_gates.md)
 18. [Preview RLS / GRANT / Data API test design](17_preview_rls_grant_data_api_test_design.md)
+19. [P0 security execution readiness](18_p0_security_execution_readiness.md)
 
 ## Key facts
 
@@ -49,6 +50,7 @@ Stage A〜DのREAD ONLY監査を実施した。production DBは80 public tables 
 - External API/Workspace実環境可否と正式Acceptance Criteriaの実装・受入。
 - Any production remediation, cleanup, migration, seed or deploy.
 - Stage1 formal completion and Stage2 readiness approval; see [approval gates](16_stage1_completion_approval_gates.md) and [Preview security test design](17_preview_rls_grant_data_api_test_design.md).
+- Source inspection found CRM custom-cookie auth and Prisma direct Postgres use; no in-repo Supabase Data API client. Runtime DB role and external Data API consumers remain unverified; see [P0 execution readiness](18_p0_security_execution_readiness.md).
 
 ## Repository validation
 
