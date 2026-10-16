@@ -1,8 +1,8 @@
-# P0 Security Verification — Execution Readiness (Approval Required)
+# P0 Security Verification — Execution Readiness and Results
 
 ## Status
 
-**Source review complete; isolated environment and changes NOT executed.** No production database/Vercel/Calendar operation, migration, seed, project/branch creation, or PR #1–#19 operation was performed.
+**First isolated local execution unit completed on 2026-10-16; Production and hosted services untouched.** The approved local PostgreSQL bootstrap, all 21 repository migrations, synthetic fixture insertion, local CRM API checks, and local regression/build checks are recorded in [19_p0_security_local_execution_report.md](19_p0_security_local_execution_report.md). No Production database/Vercel/Calendar operation, hosted Supabase project operation, Production migration, deployment, or PR #1–#18 operation was performed. PR #19 remains OPEN/Draft; only this docs-only result is proposed for it.
 
 This runbook refines [the Preview test design](17_preview_rls_grant_data_api_test_design.md) using CRM source code as inspected on branch `audit/aios-stage1-db-inventory`. Source inspection is not a live validation of Production Vercel configuration, Supabase API settings, runtime roles, or external consumers.
 
@@ -35,18 +35,18 @@ First choice: a **local disposable Supabase stack + local Next.js app** on the d
 
 If local PostgREST/Data API parity or pooling role behavior cannot reproduce the relevant managed-project settings, a second option is a new isolated Supabase project in an organization selected and funded by the human owner. No existing production-linked project or Supabase production branch. Project creation, billing, credentials, and any schema migration are explicit approvals required before execution.
 
-### Proposed build steps (await approval before running)
+### Execution guardrails (used for first unit; retained for follow-up)
 
 1. Confirm Docker/CLI availability and choose a disposable local target. Use a **separate worktree/temp directory** for Supabase CLI files so generated config, local secrets, fixtures, and test output cannot accidentally enter PR #19. Do not run `supabase init` in the audit repository without approval.
-2. Pin/report Supabase CLI and Postgres/PostgREST versions. The proposed local schema bootstrap is the 21 repository migrations in lexical order, listed below. This list is the proposed target, not permission to run it. Do not use `supabase db pull`/branch/rebase against production.
+2. Pin/report relevant database/API versions. The 21 repository migrations below were applied only to the empty temporary loopback DB. This is not permission to apply them to any other target. Do not use `supabase db pull`/branch/rebase against Production.
 3. After approval, apply these migrations to the **empty local DB only**, then separately insert only synthetic fixtures. Do not run application `prisma/seed.ts`; it may create default business data beyond these fixtures.
 4. Set local-only `DATABASE_URL`, cookie/security placeholder secrets and disabled external feature flags. Ensure no production hostnames/projects/credentials resolve from the environment. Use fake mail/calendar adapters or disable those outbound integrations.
 5. Start the local CRM app against local DB. Validate login/cookie flows using synthetic users. Exercise local Data API REST only if local Supabase stack is enabled and configured with synthetic keys.
 6. Save sanitized test output outside versioned paths; tear down disposable volumes only after evidence export and reviewer approval. Do not place `.env`, JWT, API keys, database dumps, or test cookies in Git.
 
-This action creates a local environment and runs database migrations/seed-like fixture insertion; both are withheld pending human approval as requested. Hosted isolated-project creation is a separate higher-impact approval.
+The owner approved the first local execution unit. A native PostgreSQL 17.11 cluster was created in a unique `/private/tmp` directory and bound only to `127.0.0.1`; all 21 migrations and synthetic fixtures ran there. No hosted Supabase environment was started. PostgREST/Data API parity and any RLS/GRANT mutation remain outside that approval and require a separate exact-target approval.
 
-### Proposed repository migration list and data effects
+### Repository migration order and data effects
 
 All `prisma/migrations/*/migration.sql` in the following exact order (21 files):
 
@@ -214,12 +214,8 @@ Do not send a Production `DATABASE_URL`, service role key, Supabase secret key, 
 
 ## 9. Execution readiness and next human approval
 
-**Ready now**: source findings documented; independent synthetic test plan and proposed non-executable ACL/RLS changes defined; no environment or database mutation performed.
+**Completed for the approved local scope**: schema bootstrap and synthetic fixtures on a proven loopback-only temporary DB; custom CRM cookie and tenant-boundary smoke checks; unit tests, typecheck, lint, and build. Detailed results are in [19_p0_security_local_execution_report.md](19_p0_security_local_execution_report.md).
 
-**Not ready to execute tests**: no approved local Supabase/Docker target, no reviewed migration/fixture plan, no actual Data API settings/external consumer answer, and no confirmed Prisma runtime role/RLS context design.
+**Still blocked / unverified**: live Production runtime role and `BYPASSRLS`, live Data API exposure and actual `anon`/`authenticated` access, PostgREST authenticated-role behavior, RLS policy enforcement, external Data API consumers, and RLS compatibility for public capability, webhook, and cron paths.
 
-Before the next action, approve or reject this exact first execution unit:
-
-> Create a disposable local Supabase stack and local CRM app in a temporary worktree/temporary directory, disconnected from Production and Vercel; replay the enumerated repository Prisma migrations into its empty local Postgres database; insert only the synthetic fixtures listed in section 3; run read-only catalog checks, local PostgREST anon tests, custom-cookie/Prisma tenant tests, and existing local regression tests; no real Google calls, no hosted Supabase project, no Production secrets/data, no policy/migration changes beyond schema bootstrap, and no PR operations.
-
-This first unit includes environment creation, local database migration and synthetic fixture insertion, so it requires explicit human approval before execution. A later RLS/GRANT change experiment must be separately presented with an exact migration diff and target before approval.
+Next approval requests and priority are listed in [19_p0_security_local_execution_report.md](19_p0_security_local_execution_report.md). Any follow-up RLS/GRANT experiment must be separately presented with the exact test-only SQL, disposable target identity, rollback/recreate plan, and API/application regression matrix before approval. Production catalog reads require separately authorized read-only access; no Production writes are recommended or requested.
