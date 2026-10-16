@@ -24,6 +24,8 @@ Stage A〜DのREAD ONLY監査を実施した。production DBは80 public tables 
 14. [Open PR plan](13_open_pr_inventory_and_merge_plan.md)
 15. [Official requirements conformance](14_official_requirements_conformance.md)
 16. [Requirements tracking update proposal](15_requirements_tracking_update_proposal.md)
+17. [Stage1 completion approval gates](16_stage1_completion_approval_gates.md)
+18. [Preview RLS / GRANT / Data API test design](17_preview_rls_grant_data_api_test_design.md)
 
 ## Key facts
 
@@ -46,6 +48,7 @@ Stage A〜DのREAD ONLY監査を実施した。production DBは80 public tables 
 - 情報区分の詳細と30日Trash後の長期保持方針（質問管理表で未回答）。
 - External API/Workspace実環境可否と正式Acceptance Criteriaの実装・受入。
 - Any production remediation, cleanup, migration, seed or deploy.
+- Stage1 formal completion and Stage2 readiness approval; see [approval gates](16_stage1_completion_approval_gates.md) and [Preview security test design](17_preview_rls_grant_data_api_test_design.md).
 
 ## Repository validation
 
