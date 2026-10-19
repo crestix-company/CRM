@@ -58,10 +58,41 @@ export async function destroySession() {
   cookieStore.delete(cookieName);
 }
 
+async function getDevBypassContext(): Promise<AuthContext | null> {
+  const member = await prisma.organizationMember.findFirst({
+    where: {
+      status: MemberStatus.ACTIVE,
+      role: OrganizationRole.SUPER_ADMIN,
+    },
+    include: {
+      user: { select: { id: true, email: true, name: true } },
+      organization: { select: { id: true, name: true, slug: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (!member) return null;
+
+  return {
+    sessionId: "dev-bypass-session",
+    user: member.user,
+    organization: member.organization,
+    membership: {
+      id: member.id,
+      role: member.role,
+      teamId: member.teamId,
+      selectedBusinessUnitId: member.selectedBusinessUnitId,
+    },
+  };
+}
+
 export async function getAuthContext(): Promise<AuthContext | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(cookieName)?.value;
-  if (!token) return null;
+  if (!token) {
+    // ログイン機能コメントオフ（バイパスモード）
+    return getDevBypassContext();
+  }
 
   const session = await prisma.authSession.findUnique({
     where: { tokenHash: hashToken(token) },
@@ -73,7 +104,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 
   if (!session || session.expiresAt <= new Date()) {
     if (session) await prisma.authSession.delete({ where: { id: session.id } });
-    return null;
+    return getDevBypassContext();
   }
 
   const membership = await prisma.organizationMember.findUnique({
@@ -93,7 +124,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   });
 
   if (!membership || membership.status !== MemberStatus.ACTIVE) {
-    return null;
+    return getDevBypassContext();
   }
 
   return {
@@ -127,9 +158,11 @@ export async function switchActiveOrganization(
     return false;
   }
 
-  await prisma.authSession.update({
-    where: { id: context.sessionId },
-    data: { activeOrganizationId: organizationId, lastSeenAt: new Date() },
-  });
+  if (context.sessionId !== "dev-bypass-session") {
+    await prisma.authSession.update({
+      where: { id: context.sessionId },
+      data: { activeOrganizationId: organizationId, lastSeenAt: new Date() },
+    });
+  }
   return true;
 }
