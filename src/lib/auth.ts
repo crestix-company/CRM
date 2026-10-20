@@ -59,31 +59,36 @@ export async function destroySession() {
 }
 
 async function getDevBypassContext(): Promise<AuthContext | null> {
-  const member = await prisma.organizationMember.findFirst({
-    where: {
-      status: MemberStatus.ACTIVE,
-      role: OrganizationRole.SUPER_ADMIN,
-    },
-    include: {
-      user: { select: { id: true, email: true, name: true } },
-      organization: { select: { id: true, name: true, slug: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  try {
+    const member = await prisma.organizationMember.findFirst({
+      where: {
+        status: MemberStatus.ACTIVE,
+        role: OrganizationRole.SUPER_ADMIN,
+      },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+        organization: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-  if (!member) return null;
+    if (!member) return null;
 
-  return {
-    sessionId: "dev-bypass-session",
-    user: member.user,
-    organization: member.organization,
-    membership: {
-      id: member.id,
-      role: member.role,
-      teamId: member.teamId,
-      selectedBusinessUnitId: member.selectedBusinessUnitId,
-    },
-  };
+    return {
+      sessionId: "dev-bypass-session",
+      user: member.user,
+      organization: member.organization,
+      membership: {
+        id: member.id,
+        role: member.role,
+        teamId: member.teamId,
+        selectedBusinessUnitId: member.selectedBusinessUnitId,
+      },
+    };
+  } catch (error) {
+    console.error("Failed to load dev bypass auth context:", error);
+    return null;
+  }
 }
 
 export async function getAuthContext(): Promise<AuthContext | null> {
